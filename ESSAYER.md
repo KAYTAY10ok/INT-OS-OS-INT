@@ -15,6 +15,20 @@ PC. Les validations automatiques et leurs limites sont décrites dans
 Pas encore testable : installation sur disque, mises à jour par paquets
 signés, matériel physique, son, suspension, Wi-Fi.
 
+## Sous Windows
+
+`scripts/int` cible Linux. Sous Windows, utilise le paquet prêt à l'emploi
+`INT-Linux-bureau.zip` (noyau, image du bureau, `lancer-INT-Linux.bat`,
+`reinitialiser.bat`, `LISEZMOI.txt`) : installe QEMU pour Windows
+(https://qemu.weilnetz.de/w64/), dézippe, puis double-clique sur
+`lancer-INT-Linux.bat`. Il utilise l'accélération Windows Hypervisor
+Platform si elle est activée, sinon l'émulation (plus lente), et travaille
+sur une copie de l'image. Ce paquet n'est pas versionné dans Git (environ
+87 Mo) ; il a été transmis directement au propriétaire le 2026-11-06.
+La ligne de commande QEMU du `.bat` a été vérifiée sous Linux (démarrage
+du noyau et montage du système de fichiers) ; elle n'a pas été exécutée
+sous Windows.
+
 ## Prérequis
 
 - Linux x86-64 avec `qemu-system-x86_64` (Debian/Ubuntu :

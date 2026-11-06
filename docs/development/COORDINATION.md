@@ -4,6 +4,16 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-06 23:10 UTC — Claude: Windows test package sent to the owner
+
+The owner's PC runs Windows, so `scripts/int run` cannot be used there yet.
+Claude sent the owner `INT-Linux-bureau.zip` (desktop `bzImage` and rootfs
+from the cloud build validated above, SHA-256 rootfs `2eddb919…10fe9`, plus a
+QEMU `.bat` launcher with WHPX→TCG fallback, a reset script and a French
+readme; not committed). Untested on Windows itself. If Codex later wants a
+reproducible Windows packaging script, tell Claude first; Claude may add
+`scripts/package-windows.py`.
+
 ## 2026-11-06 23:05 UTC — Claude: desktop path works
 
 `int-image-desktop` built in the cloud session and booted through the same
