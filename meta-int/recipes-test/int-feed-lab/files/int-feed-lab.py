@@ -133,8 +133,9 @@ printf 'laboratory fixture\\n' > %{buildroot}/usr/share/int-feed-lab/probe
                     "--define", "_gpg_sign_cmd_extra_args --batch --pinentry-mode loopback",
                     "--addsign", signed], env=signing_env)
 
-            def rpm(db, *options, ok=True):
-                return invoke([tools["rpmkeys"], "--define", f"_dbpath {db}", *options],
+            def rpm(db, *options, ok=True, strict=False):
+                policy = ["--define", "_pkgverify_level all"] if strict else []
+                return invoke([tools["rpmkeys"], "--define", f"_dbpath {db}", *policy, *options],
                               env=env, ok=ok)
 
             trusted, empty, wrong_db = (root / n for n in ("rpm-trusted", "rpm-empty", "rpm-wrong"))
@@ -142,18 +143,23 @@ printf 'laboratory fixture\\n' > %{buildroot}/usr/share/int-feed-lab/probe
                 db.mkdir(mode=0o700)
             rpm(trusted, "--import", public)
             rpm(wrong_db, "--import", wrong_public)
-            verified = rpm(trusted, "--checksig", "--verbose", signed)
+            verified = rpm(trusted, "--checksig", "--verbose", signed, strict=True)
             record("rpm_signed_trusted", signature_ok(verified.stdout), verified.stdout,
                    verified.returncode)
             for name, db in (("rpm_missing_key", empty), ("rpm_wrong_key", wrong_db)):
-                checked = rpm(db, "--checksig", "--verbose", signed, ok=False)
+                checked = rpm(db, "--checksig", "--verbose", signed, ok=False, strict=True)
                 record(name, checked.returncode != 0 and not signature_ok(checked.stdout)
                        and "NOKEY" in checked.stdout.upper(),
                        checked.stdout, checked.returncode)
             checked = rpm(trusted, "--checksig", "--verbose", unsigned, ok=False)
-            record("rpm_unsigned", checked.returncode == 0 and
+            record("rpm_unsigned_default_digest_only", checked.returncode == 0 and
                    not re.search(r"\bsignature\b", checked.stdout, re.I) and
                    re.search(r"\bdigest\b.*:\s*OK\s*$", checked.stdout, re.I | re.M),
+                   checked.stdout, checked.returncode)
+            checked = rpm(trusted, "--checksig", "--verbose", unsigned, ok=False, strict=True)
+            record("rpm_unsigned_strict_rejected", checked.returncode != 0 and
+                   not signature_ok(checked.stdout) and
+                   re.search(r"\bsignature\b.*:\s*NOTFOUND\s*$", checked.stdout, re.I | re.M),
                    checked.stdout, checked.returncode)
             corrupt = root / "corrupt.rpm"
             shutil.copyfile(signed, corrupt)
@@ -162,7 +168,7 @@ printf 'laboratory fixture\\n' > %{buildroot}/usr/share/int-feed-lab/probe
                 byte = stream.read(1)
                 stream.seek(-1, os.SEEK_END)
                 stream.write(bytes([byte[0] ^ 1]))
-            checked = rpm(trusted, "--checksig", "--verbose", corrupt, ok=False)
+            checked = rpm(trusted, "--checksig", "--verbose", corrupt, ok=False, strict=True)
             record("rpm_corrupt", checked.returncode != 0 and
                    re.search(r"\bdigest\b.*:\s*BAD(?:\s|$)", checked.stdout, re.I | re.M),
                    checked.stdout, checked.returncode)

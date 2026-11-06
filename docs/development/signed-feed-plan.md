@@ -13,8 +13,14 @@ working signed feed.
 An experimental `int-feed-lab-native` recipe now prepares a disposable RPM,
 two temporary test keys and detached repository metadata. It exercises native
 signature acceptance and rejection, but does not audit the metadata checksum
-chain, test DNF or test the target image. It has not yet been run. After the
-current build finishes, capture its console output outside the checkout:
+chain, test DNF or test the target image. It has not yet been run.
+
+The RPM tests explicitly request `_pkgverify_level all`. A separate unsigned
+control demonstrates that RPM's default digest policy can accept an unsigned
+package, and then checks that the strict policy rejects it. Both controls
+still need to be exercised with the built tools.
+
+After the current build finishes, capture its console output outside the checkout:
 
 ```sh
 set -o pipefail
