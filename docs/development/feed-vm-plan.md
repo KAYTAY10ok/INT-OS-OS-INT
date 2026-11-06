@@ -1,7 +1,7 @@
 # Isolated DNF feed VM: proposed test plan
 
-Status: an experimental image recipe exists, but has not yet been built or
-booted. The guest helper and runner have not been created; no DNF feed,
+Status: an experimental image recipe and a guest helper for the positive
+`success` case exist, but have not yet been built or booted. No DNF feed,
 installation, update or rejection test has been run. The existing core and
 desktop image validations do not qualify this plan.
 The prerequisites, signing limitations and complete negative-case rationale
@@ -13,10 +13,10 @@ and their proposed build procedure are described in [feed-probe.md](feed-probe.m
 The separate `int-image-feed-smoke` recipe is based on
 `int-image-minimal.bb` and restricted to `qemux86-64`. It selects
 `IMAGE_FEATURES += "package-management"`, which is intended to include target
-`rpm` and `dnf` and retain their package database. It does not include a feed
-test service, test repository, public key or probe package. The minimal
-image's locked-root policy remains in place. Despite its name, this base
-image does not yet perform a smoke test and is not an installation image.
+`rpm` and `dnf` and retain their package database. It adds a test-only service
+and GnuPG; it does not include a repository, public key or probe package.
+The minimal image's locked-root policy remains in place. This experimental
+image has not yet been built or tested and is not an installation image.
 
 When the current operation has finished, build it using the separate profile:
 
@@ -31,18 +31,21 @@ enforcement, a working feed, or a successful guest boot. In the locked OE
 source, `rootfs_rpm.bbclass` also adds 100 MiB of extra rootfs space when DNF
 is installed. Verify the actual image manifest and free space after building.
 
-A later test implementation must include a test-only `int-feed-smoke`
-package and the target GnuPG tools needed for fingerprint checking. OE splits
-the latter's `gpg` and `gpg-agent` into `gnupg-gpg`; verify the actual
-manifest and test dependencies rather than assuming the split package is
-sufficient.
+The test-only `int-feed-smoke` package depends on `dnf`, `rpm` and
+`gnupg-gpg`; verify the actual manifest and test dependencies rather than
+assuming this is sufficient.
 
-The test-only package can install a oneshot systemd service which runs the
-assertions as root on the serial console, then shuts down the disposable VM.
-It must emit unambiguous failure markers and handle timeouts. Do not unlock
-root, install a reusable credential, enable a remote login, or include this
-test service in normal images. Restrict the experimental image to the tested
-QEMU machine.
+The test-only oneshot service runs as root on the serial console, then shuts
+down the disposable VM. It requires a read-only `/dev/vdb`, a single
+`int_feed_fingerprint=FULL_40_HEX` and `int_feed_case=success` on the kernel
+command line. It checks the independent pin before importing a key, installs
+version 1.0, updates to 2.0 and repeats the update, checking the RPM version
+and installed file each time. It emits ordered `INT_FEED_CHECK` markers, a
+single `INT_FEED_CASE:success:PASS`, and `INT_FEED_SHUTDOWN`; failures emit
+`INT_FEED_FAIL`. The service and its DNF commands are untested in an actual
+guest. Negative cases still need to be implemented and must never be inferred
+from the success path. Do not unlock root, install a reusable credential,
+enable a remote login, or include this test service in normal images.
 
 Use a separate runner based on the existing `scripts/qemu-smoke.py` snapshot,
 kernel/manifest consistency, process timeout, strict marker and evidence

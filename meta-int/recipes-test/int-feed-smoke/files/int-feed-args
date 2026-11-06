@@ -1,0 +1,25 @@
+#!/bin/sh
+# Emit the independently supplied test fingerprint after strict cmdline checks.
+set -eu
+fingerprint=
+test_case=
+fingerprint_seen=0
+case_seen=0
+set -f
+for token in $(cat "$1"); do
+    case "$token" in
+        int_feed_fingerprint=*)
+            test "$fingerprint_seen" -eq 0
+            fingerprint_seen=1
+            fingerprint=${token#int_feed_fingerprint=}
+            ;;
+        int_feed_case=*)
+            test "$case_seen" -eq 0
+            case_seen=1
+            test_case=${token#int_feed_case=}
+            ;;
+    esac
+done
+test "$test_case" = success
+printf '%s\n' "$fingerprint" | grep -Eq '^[0-9A-F]{40}$'
+printf '%s\n' "$fingerprint"

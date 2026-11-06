@@ -1,0 +1,15 @@
+[Unit]
+Description=INT disposable local package feed test
+Before=serial-getty@ttyS0.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/int-feed-smoke
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/ttyS0
+TTYReset=no
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

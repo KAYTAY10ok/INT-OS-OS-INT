@@ -1,0 +1,22 @@
+#!/bin/sh
+# Validate GnuPG's colon listing for the laboratory's single primary key.
+set -eu
+test "$#" -eq 3
+listing=$1
+expected=$2
+now=$3
+printf '%s\n' "$expected" | grep -Eq '^[0-9A-F]{40}$'
+printf '%s\n' "$now" | grep -Eq '^[0-9]+$'
+awk -F: -v expected="$expected" -v now="$now" '
+    $1 == "pub" {
+        pub++
+        if ($2 ~ /[rReEdDiI]/ || $6 !~ /^[0-9]+$/ || $7 !~ /^[0-9]+$/ ||
+            $6 > now || $7 <= now) bad=1
+    }
+    $1 == "sub" || $1 == "sec" || $1 == "ssb" { bad=1 }
+    $1 == "fpr" {
+        fingerprints++
+        if (pub != 1 || $10 != expected) bad=1
+    }
+    END { if (pub != 1 || fingerprints != 1 || bad) exit 1 }
+' "$listing"

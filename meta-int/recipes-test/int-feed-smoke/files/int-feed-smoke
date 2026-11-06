@@ -1,0 +1,90 @@
+#!/bin/sh
+# Test-only local-feed guest. The host supplies the trusted fingerprint on the
+# kernel command line and a separate read-only fixture disk on /dev/vdb.
+set -eu
+result=FAIL
+finish() {
+    if test "$result" != PASS; then
+        echo 'INT_FEED_FAIL'
+    fi
+    echo 'INT_FEED_SHUTDOWN'
+    sync
+    systemctl --no-block poweroff
+}
+trap finish EXIT
+
+fingerprint=$(/usr/libexec/int-feed-args /proc/cmdline)
+work=/run/int-feed-smoke
+mkdir -m 0700 "$work"
+mkdir -m 0700 "$work/home" "$work/repos" "$work/cache" "$work/persist" "$work/mount"
+
+# A QEMU read-only block device and read-only mount are both required.
+attempt=0
+while test ! -b /dev/vdb; do
+    attempt=$((attempt + 1))
+    test "$attempt" -lt 30
+    sleep 1
+done
+test "$(cat /sys/block/vdb/ro)" = 1
+mount -t ext4 -o ro,nosuid,nodev,noexec /dev/vdb "$work/mount"
+key="$work/mount/trusted-public-key.asc"
+test -f "$key"
+size=$(wc -c < "$key")
+test "$size" -gt 0
+test "$size" -le 65536
+cp "$key" "$work/trusted.asc"
+
+# Show-only parses key material without importing it into any trust store.
+# The fixture format uses a single, unexpired primary key and no subkeys.
+gpg --batch --no-options --homedir "$work/home" --with-colons --show-keys \
+    "$work/trusted.asc" > "$work/key-list"
+/usr/libexec/int-feed-keycheck "$work/key-list" "$fingerprint" "$(date +%s)"
+echo 'INT_FEED_CHECK:pin:PASS'
+
+# Only the pinned local public key is made available for either RPM or DNF.
+rpm --import "$work/trusted.asc"
+cat > "$work/dnf.conf" <<EOF
+[main]
+reposdir=$work/repos
+cachedir=$work/cache
+persistdir=$work/persist
+plugins=0
+gpgcheck=1
+localpkg_gpgcheck=1
+assumeyes=1
+EOF
+for version in 1 2; do
+    cat > "$work/repos/intfeed-v$version.repo" <<EOF
+[intfeed-v$version]
+name=INT disposable feed $version
+baseurl=file://$work/mount/valid-v$version
+enabled=0
+gpgkey=file://$work/trusted.asc
+gpgcheck=1
+repo_gpgcheck=1
+skip_if_unavailable=0
+EOF
+done
+
+check_version() {
+    test "$(rpm -q --qf '%{VERSION}\n' int-feed-probe)" = "$1"
+    test "$(cat /usr/share/int-feed-probe/version)" = "$1"
+    test "$(wc -c < /usr/share/int-feed-probe/version)" -eq 4
+}
+if rpm -q int-feed-probe >/dev/null 2>&1; then
+    echo 'Probe package was already installed' >&2
+    exit 1
+fi
+dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-v1 --refresh makecache
+dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-v1 install int-feed-probe-1.0
+check_version 1.0
+echo 'INT_FEED_CHECK:install-v1:PASS'
+dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-v2 --refresh makecache
+dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-v2 upgrade int-feed-probe
+check_version 2.0
+echo 'INT_FEED_CHECK:update-v2:PASS'
+dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-v2 upgrade int-feed-probe
+check_version 2.0
+echo 'INT_FEED_CHECK:repeat-v2:PASS'
+echo 'INT_FEED_CASE:success:PASS'
+result=PASS
