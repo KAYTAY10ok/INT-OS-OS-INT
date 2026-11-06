@@ -17,6 +17,11 @@ Sequoia backend, test-only key handling, metadata/package rejection cases and
 production signing limitations. Neither development core image installs a DNF
 client or claims verified updates.
 
+An isolated `feed` build profile selects OpenPGP-capable native and target RPM.
+Its configuration is separate from the known-good images; selecting a backend
+does not establish that it builds or verifies signatures. Actual signing,
+tamper rejection, update and recovery tests are still open.
+
 An eventual `int-pkg` can wrap that mature backend after its semantics are tested.
 Do not create a new dependency solver or claim rollback without an implemented
 and tested transaction/snapshot model. IPK trades footprint against the richer

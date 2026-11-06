@@ -48,6 +48,15 @@ class ProfileTests(unittest.TestCase):
         helper.configure(self.work)
         self.assertEqual(path.read_text(), edited)
 
+    def test_feed_profile_preserves_core_configuration_and_is_separate(self):
+        helper.configure(self.work)
+        core = self.work/'build/conf/local.conf'
+        original = core.read_bytes()
+        helper.configure(self.work, 'feed')
+        self.assertEqual(core.read_bytes(), original)
+        self.assertIn('require conf/distro/include/int-feed-lab.inc',
+                      (self.work/'build-feed/conf/local.conf').read_text())
+
     def test_container_selects_separate_build_directory_and_refuses_unknown_profile(self):
         with mock.patch.object(helper, 'docker') as docker:
             helper.container(self.work, ['bitbake', 'int-image-desktop'], profile='desktop')

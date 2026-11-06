@@ -25,7 +25,7 @@ def generic_x86_64_flags(raw):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--profile", choices=["core", "desktop"], default="core")
+    parser.add_argument("--profile", choices=["core", "desktop", "feed"], default="core")
     args = parser.parse_args()
     subprocess.run(["bitbake", "-p"], check=True)
     lock = json.loads(Path("/src/configs/sources.lock.json").read_text())
@@ -83,6 +83,12 @@ def main():
                 or "libseat-builtin" in desktop["seatd"]["PACKAGECONFIG"].split()
                 or desktop["seatd"]["SYSTEMD_AUTO_ENABLE"] != "disable"):
             failures.append("desktop seat access must use logind without an enabled seatd daemon")
+    if args.profile == "feed":
+        observed["rpm_packageconfig"] = {recipe: value("PACKAGECONFIG", recipe)
+                                         for recipe in ("rpm-native", "rpm")}
+        for recipe, config in observed["rpm_packageconfig"].items():
+            if "sequoia" not in config.split():
+                failures.append(f"{recipe} lacks the OpenPGP backend required for the feed lab")
     print(json.dumps({"effective_configuration": observed, "failures": failures}, indent=2))
     return 1 if failures else 0
 

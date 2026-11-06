@@ -108,6 +108,24 @@ Neither test qualifies physical keyboards/mice, displays or GPU hardware,
 accelerated rendering, or resource targets. The production command
 `start-int-desktop` requires an active local virtual console session.
 
+## Isolated signed-feed laboratory
+
+The `feed` profile selects RPM's Sequoia OpenPGP backend in a separate build
+directory. It does not enable signing, configure a feed or create keys:
+
+```sh
+./scripts/int --profile feed configure
+./scripts/int --profile feed check
+./scripts/int --profile feed build rpm-native
+```
+
+It uses `INT_WORKDIR/build-feed` with the shared download/sstate caches and the
+same operation lock. Sequoia needs a Rust toolchain, so monitor disk space and
+allow for a substantially larger build. A successful configuration check is not
+proof that signing or verification works. Follow the
+[signed-feed plan](docs/development/signed-feed-plan.md) for the required real
+positive/negative signature tests and test-only key handling.
+
 Images and manifests appear in
 `../int-linux-work/build/tmp/deploy/images/qemux86-64/`.
 QEMU evidence is retained in `../int-linux-work/evidence/`. The smoke runner uses

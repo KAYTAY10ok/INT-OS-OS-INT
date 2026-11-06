@@ -69,9 +69,9 @@ def bootstrap(work):
 
 
 def build_directory(profile):
-    if profile not in ("core", "desktop"):
+    if profile not in ("core", "desktop", "feed"):
         raise RuntimeError(f"Unknown build profile: {profile}")
-    return "build" if profile == "core" else "build-desktop"
+    return {"core": "build", "desktop": "build-desktop", "feed": "build-feed"}[profile]
 
 
 def configure(work, profile="core"):
@@ -118,6 +118,9 @@ include int-local.conf
             '/src/meta-int"', '/src/meta-int /work/sources/meta-wayland /src/meta-int-desktop"')
         files["local.conf"] = files["local.conf"].replace(
             "include int-local.conf", "require conf/distro/include/int-desktop.inc\ninclude int-local.conf")
+    elif profile == "feed":
+        files["local.conf"] = files["local.conf"].replace(
+            "include int-local.conf", 'require conf/distro/include/int-feed-lab.inc\ninclude int-local.conf')
     for name, contents in files.items():
         target = conf / name
         if target.exists() and target.read_text() != contents:
@@ -150,7 +153,7 @@ exec "$@"
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--profile", choices=["core", "desktop"], default="core")
+    parser.add_argument("--profile", choices=["core", "desktop", "feed"], default="core")
     parser.add_argument("command", choices=["bootstrap", "builder", "configure", "build", "shell", "check", "smoke", "core-check", "desktop-check", "graphics-check"])
     parser.add_argument("target", nargs="?")
     args = parser.parse_args()
@@ -174,7 +177,7 @@ def dispatch(args, work):
     elif args.command == "configure":
         configure(work, profile)
     elif args.command == "build":
-        target = args.target or ("int-image-smoke" if profile == "core" else "int-image-desktop-smoke")
+        target = args.target or {"core": "int-image-smoke", "desktop": "int-image-desktop-smoke", "feed": "rpm-native"}[profile]
         container(work, ["bitbake", target], profile=profile)
     elif args.command == "check":
         container(work, ["python3", "/src/scripts/check-config.py", "--profile", profile], profile=profile)

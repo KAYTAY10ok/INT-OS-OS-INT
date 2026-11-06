@@ -4,7 +4,11 @@ Status: researched against locked OE-Core revision
 `ae5a301091f5b0574ea7444aab40b309b6d9f3f2`. No INT feed, signing key,
 signature verification, package update or recovery test is claimed by this
 document. The current minimal images do not contain RPM/DNF runtime tools.
-The account and firewall milestone takes precedence over this experiment.
+The console and virtual desktop milestones have since passed their recorded VM
+tests. The separate `--profile feed` configuration now selects the Sequoia
+backend for native and target RPM without changing the preserved image profiles.
+The backend build and real signature tests remain required before claiming a
+working signed feed.
 
 ## Current prerequisites
 

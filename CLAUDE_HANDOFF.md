@@ -4,6 +4,17 @@ Current work: shared desktop integration after the verified console core, not a 
 release. INT-OS and OS-INT retain one shared architecture. No dependency on Claude
 Code is required to build or test it.
 
+## Active next milestone — signed-feed laboratory
+
+`--profile feed` uses a separate `build-feed` directory and selects RPM's
+Sequoia OpenPGP backend for native and target packages. It does not generate
+keys, sign packages, publish a feed or alter the core/desktop build profiles.
+The initial native RPM build is being attempted; inspect
+`../int-linux-work/check-feed.log` and `build-rpm-sequoia.log` for actual
+results rather than assuming a live process. Shared source/download caches and
+the operation lock are retained. See `docs/development/signed-feed-plan.md` for
+test-only key constraints and the real acceptance/rejection tests still needed.
+
 ## Desktop prototype — graphical VM verified, 2026-11-06
 
 The latest graphics run additionally passes Virtio keyboard shortcuts for the
