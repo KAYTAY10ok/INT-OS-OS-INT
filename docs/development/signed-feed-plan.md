@@ -7,8 +7,10 @@ see [VM validation](validation-feed-vm-2026-11-06.md). A separate VM test also
 confirmed rejection of an unsigned RPM while preserving the installed version;
 see [unsigned-package validation](validation-feed-unsigned-vm-2026-11-06.md).
 A further guest test rejected an RPM signed by an untrusted key; see
-[wrong-key validation](validation-feed-wrong-key-vm-2026-11-06.md). Other
-rejection and recovery tests remain outstanding. The current minimal
+[wrong-key validation](validation-feed-wrong-key-vm-2026-11-06.md). Another
+rejected metadata with a missing detached signature; see
+[missing-signature validation](validation-feed-missing-signature-vm-2026-11-06.md).
+Other rejection and recovery tests remain outstanding. The current minimal
 images do not contain RPM/DNF runtime tools.
 The console and virtual desktop milestones have since passed their recorded VM
 tests. The separate `--profile feed` configuration now selects the Sequoia
@@ -220,8 +222,10 @@ metadata while retaining version 1.0; its evidence and limits are in the
 [unsigned-package validation](validation-feed-unsigned-vm-2026-11-06.md).
 A further guest test rejected a version 2.0 RPM signed with an untrusted key,
 also retaining version 1.0; see
-[wrong-key validation](validation-feed-wrong-key-vm-2026-11-06.md). Other
-negative cases below remain to be tested in the guest.
+[wrong-key validation](validation-feed-wrong-key-vm-2026-11-06.md). A separate
+guest rejected metadata with a missing signature while retaining version 1.0;
+see [missing-signature validation](validation-feed-missing-signature-vm-2026-11-06.md).
+Other negative cases below remain to be tested in the guest.
 
 Create a tiny no-scriptlet package `int-feed-probe`, versions `1` and `2`,
 installing only its own version file. Use a separate experimental image/build

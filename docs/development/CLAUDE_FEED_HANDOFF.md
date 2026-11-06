@@ -63,6 +63,9 @@ inspecte leur provenance avant de les modifier ou de les ajouter.
   Un troisième a confirmé le rejet d'un RPM signé par une mauvaise clé, après
   un contrôle positif sur un RPM signé par la clé fiable ; voir
   [validation de la mauvaise clé](validation-feed-wrong-key-vm-2026-11-06.md).
+  Un quatrième a confirmé le refus d'un dépôt dont la signature de métadonnées
+  manque après un témoin signé ; voir
+  [validation de signature manquante](validation-feed-missing-signature-vm-2026-11-06.md).
   Les autres rejets DNF, la cible réseau et le matériel physique ne sont pas
   couverts.
 - Les 87 tests hôte de la suite existante ont réussi ; journal
