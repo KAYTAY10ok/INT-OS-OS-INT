@@ -10,6 +10,23 @@ backend for native and target RPM without changing the preserved image profiles.
 The backend build and real signature tests remain required before claiming a
 working signed feed.
 
+An experimental `int-feed-lab-native` recipe now prepares a disposable RPM,
+two temporary test keys and detached repository metadata. It exercises native
+signature acceptance and rejection, but does not audit the metadata checksum
+chain, test DNF or test the target image. It has not yet been run. After the
+current build finishes, capture its console output outside the checkout:
+
+```sh
+set -o pipefail
+./scripts/int --profile feed build int-feed-lab-native 2>&1 | \
+  tee "/workspace/int-linux-work/feed-lab-$(date -u +%Y%m%dT%H%M%SZ).log"
+```
+
+The disposable keys are unprotected and removed after the test; never use
+this laboratory procedure for release signing. The JSON report is printed only
+after all its checks pass. Preserve the captured output because `rm_work` may
+remove the recipe's task logs.
+
 ## Current prerequisites
 
 The build already contains native `rpm`, `rpmkeys`, `rpmsign`,
