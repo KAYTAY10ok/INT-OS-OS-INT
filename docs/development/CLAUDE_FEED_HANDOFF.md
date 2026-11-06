@@ -42,21 +42,19 @@ inspecte leur provenance avant de les modifier ou de les ajouter.
   `build-desktop`. Le contrôle de configuration a confirmé `sequoia` dans
   `PACKAGECONFIG` pour `rpm-native` et `rpm` cible. Voir
   `/workspace/int-linux-work/check-feed.log`.
-- La compilation de `rpm-native` avec ses dépendances Sequoia a réussi :
-  920 tâches, aucune erreur. Journal :
-  `/workspace/int-linux-work/build-rpm-sequoia.log`. Une compilation réussie
-  **ne prouve pas** que les signatures sont effectivement vérifiées.
-- Le laboratoire `int-feed-lab-native` est lancé ; son journal est
-  `/workspace/int-linux-work/feed-lab-20261106-native.log`. Il n'a pas encore
-  fourni de résultat de signature au moment de cette passation. Vérifie le
-  verrou, les processus et ce journal avant toute opération. Le générateur de
-  fixtures existe également, mais son résultat avec les vrais outils natifs
-  reste à établir.
+- La compilation de `rpm-native` avec Sequoia a réussi ; le laboratoire
+  `int-feed-lab-native` a ensuite vérifié une signature RPM et une signature
+  détachée `repomd.xml`, ainsi que leurs cas négatifs natifs. Les dix cas
+  passent dans `/workspace/int-linux-work/feed-lab-20261106-retry2.log` ; voir
+  [validation native](validation-feed-native-2026-11-06.md). Cela ne valide
+  pas DNF, RPM cible ni l'ensemble des sommes de métadonnées. Le générateur de
+  fixtures reste à exécuter avec les vrais outils natifs.
 - `int-feed-probe` existe en versions `1.0` et `2.0`, et
   `int-image-feed-smoke` existe comme recette expérimentale. Aucune installation
-  ni mise à jour DNF en VM n'a encore été démontrée à cette date. L'image ne
-  contient pas encore le service de test ; malgré son nom, elle n'exécute pas
-  encore de smoke test.
+  ni mise à jour DNF en VM n'a encore été démontrée à cette date. Un service
+  invité de test du parcours positif et un lanceur QEMU sont en préparation ;
+  leurs modifications et leur état de construction doivent être inspectés
+  avant utilisation. Ils ne constituent pas encore une validation invitée.
 - Les 87 tests hôte de la suite existante ont réussi ; journal
   `/workspace/int-linux-work/host-tests-fixtures.log`. Ils ne remplacent pas
   les tests natifs et invités.
@@ -97,8 +95,9 @@ nettoyage destructif pour récupérer de l'espace.
 
 ## Lot 1 — signatures natives réelles
 
-Après la fin de toute opération active, si le laboratoire n'a pas déjà été
-exécuté avec succès, lance depuis le dépôt :
+Le laboratoire natif a réussi comme indiqué ci-dessus. Si une modification
+nécessite de le relancer, attends la fin de toute opération active puis lance
+depuis le dépôt :
 
 ```sh
 set -o pipefail
@@ -106,9 +105,9 @@ set -o pipefail
   tee "/workspace/int-linux-work/feed-lab-$(date -u +%Y%m%dT%H%M%SZ).log"
 ```
 
-Corrige les erreurs de recette, de sysroot ou d'interaction entre les outils
-en t'appuyant sur leurs sorties réelles, puis relance et garde les deux
-journaux. Le résultat doit prouver une vraie signature RPM valide et le rejet
+Si le test échoue, corrige les erreurs de recette, de sysroot ou d'interaction
+entre les outils en t'appuyant sur leurs sorties réelles, puis relance et garde
+les journaux. Le résultat doit prouver une vraie signature RPM valide et le rejet
 d'une clé absente ou incorrecte, d'un paquet altéré et d'un paquet non signé
 avec une politique exigeant des signatures. Il doit aussi vérifier la
 signature de `repomd.xml` et les cas négatifs prévus. L'acceptation d'un simple
