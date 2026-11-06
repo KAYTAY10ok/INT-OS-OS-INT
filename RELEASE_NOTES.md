@@ -16,6 +16,11 @@ policy network startup gating, recovery, DHCP and clean poweroff. The host suite
 passes 57 tests. See `docs/development/validation-core-2026-11-05.md` for exact
 artifacts and scope; this remains an unreleased development image.
 
+On 2026-11-06 the shared Sway/Wayland desktop prototype built and passed its
+headless VM checks with a real owner session and terminal. Physical graphics,
+keyboard/mouse interaction and performance remain open. See
+`docs/development/validation-desktop-2026-11-06.md`.
+
 No release has been published. There are no supported ISOs, signed feeds,
 installer, desktop, validated hardware list or security/performance guarantees.
 See `CLAUDE_HANDOFF.md` for actual build and boot results.

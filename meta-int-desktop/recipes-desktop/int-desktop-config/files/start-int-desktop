@@ -16,6 +16,13 @@ active=$(loginctl show-session "$XDG_SESSION_ID" -p Active --value) || fail 'Can
 session_uid=$(loginctl show-session "$XDG_SESSION_ID" -p User --value) || fail 'Cannot read your login session. Log out and log in again.'
 [ "$remote" = no ] && [ "$seat" = seat0 ] && [ "$active" = yes ] && [ "$session_uid" = "$uid" ] || fail 'Switch to your active local virtual console before starting the desktop.'
 [ -z "${WAYLAND_DISPLAY:-}" ] || fail 'A desktop is already running in this session.'
+# Retain a user's UTF-8 locale; give the terminal a working fallback otherwise.
+if [ "$(locale charmap 2>/dev/null)" != UTF-8 ]; then
+    unset LC_ALL
+    LC_CTYPE=en_US.UTF-8
+    export LC_CTYPE
+fi
+[ "$(locale charmap 2>/dev/null)" = UTF-8 ] || fail 'A UTF-8 language setting is required to start the desktop.'
 export LIBSEAT_BACKEND=logind
 export XDG_CURRENT_DESKTOP=sway
 export XDG_SESSION_DESKTOP=int

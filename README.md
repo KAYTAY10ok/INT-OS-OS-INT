@@ -9,7 +9,10 @@ sudo, packet filtering, network recovery and clean shutdown. See the
 [core validation record](docs/development/validation-core-2026-11-05.md) for exact
 artifacts, scope and limitations. The earlier [minimal foundation](docs/development/validation-2026-11-05.md)
 is independently preserved.
-Desktop, installer, signed feeds, security profiles, and release images remain
+The shared Sway desktop prototype also passes a headless VM test with a real
+terminal. Its graphical seat and hardware remain unqualified; see the
+[desktop validation record](docs/development/validation-desktop-2026-11-06.md).
+Installer, signed feeds, complete security profiles and release images remain
 future work in the [roadmap](ROADMAP.md).
 
 ```sh

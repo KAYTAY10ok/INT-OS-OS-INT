@@ -2,7 +2,7 @@
 # Disposable guest only: a headless Pixman session does not qualify a DRM seat.
 set -eu
 PATH=/usr/bin:/bin
-LC_ALL=C
+LC_ALL=en_US.UTF-8
 export PATH LC_ALL
 umask 077
 
@@ -142,7 +142,9 @@ done
 echo 'INT_DESKTOP_CHECK:terminal:PASS'
 : > "$tmp/terminal.done"
 
-ipc exit > "$tmp/exit.json" || fail 'compositor session exit request'
+# Sway may close its IPC socket during exit before swaymsg receives a reply.
+# The bounded wait and successful compositor exit below establish the outcome.
+ipc exit > "$tmp/exit.json" 2> "$tmp/exit.log" || true
 attempt=0
 while kill -0 "$session_pid" 2>/dev/null; do
     attempt=$((attempt + 1))

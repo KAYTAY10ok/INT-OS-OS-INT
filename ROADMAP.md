@@ -43,6 +43,7 @@ The smoke image's restricted network check verifies a DHCP IPv4 address, link UP
 
 ## Phase 3 — shared INT Desktop
 
+- [x] Build the shared desktop prototype and verify an unprivileged headless Sway session, Wayland protocols, a mapped terminal and clean exit in QEMU.
 - [ ] Integrate one lightweight Wayland/tiling foundation with terminal, launcher, notifications, status bar, and keyboard navigation.
 - [ ] Add original INT branding and configurable layouts informed by the supplied references.
 - [ ] Measure desktop overhead before adding a dashboard or custom shell component.

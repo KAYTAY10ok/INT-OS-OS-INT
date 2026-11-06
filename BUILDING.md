@@ -74,9 +74,9 @@ exercises the built guest. Run `python3 -m unittest discover -s tests -v`.
 
 ## Separate desktop development profile
 
-The desktop is being integrated and has not yet passed its image/VM gate. Its
-pinned meta-wayland source is fetched by bootstrap. Use a separate configuration
-and output directory while retaining the console build:
+The desktop smoke image has passed its headless VM gate. Its pinned meta-wayland
+source is fetched by bootstrap. Use a separate configuration and output directory
+while retaining the console build:
 
 ```sh
 ./scripts/int bootstrap

@@ -4,21 +4,22 @@ Current work: shared desktop integration after the verified console core, not a 
 release. INT-OS and OS-INT retain one shared architecture. No dependency on Claude
 Code is required to build or test it.
 
-## Active next milestone — desktop, not yet built/booted
+## Desktop prototype — headless VM verified, 2026-11-06
 
 The new `meta-int-desktop` layer and source pin for meta-wayland
 `2b97daa23e0e612a087ea54b150bd0b8e0ff9378` implement stable Sway 1.11 /
 wlroots 0.19.3, foot/fuzzel/swaybar and original shared configuration. The separate
 `--profile desktop` helper configuration uses `build-desktop`, common caches,
 and ABI `6.18.54-int-desktop1`/`r2`. The default core configuration is preserved.
-Effective desktop source/CPU/feature/ABI checks pass; kernel compilation is the
-next build operation. Inspect `../int-linux-work/check-desktop.log` and
-`build-desktop-kernel.log` for current results rather than assuming a live PID.
+Effective desktop source/CPU/feature/ABI checks and image build pass. Inspect
+`../int-linux-work/check-desktop-resumed.log` and `build-desktop-smoke-4.log`.
 
-The desktop smoke harness/guest checks are being implemented for rootless
-headless compositor, IPC and terminal testing. Run the actual image/VM checks
-before claiming them. DRM seat/input and graphical output need a later test.
-`BUILDING.md` gives the profile commands; the latest completed milestone follows.
+The real VM now passes rootless headless Sway, IPC, Wayland, terminal mapping,
+session exit and the inherited core checks. See
+[validation-desktop-2026-11-06.md](docs/development/validation-desktop-2026-11-06.md)
+and `../int-linux-work/evidence/qemu-smoke-20261106T102535.306207Z-e7d97f992755/`.
+DRM seat/input and graphical output need a later test. `BUILDING.md` gives the
+profile commands; the earlier completed core milestone follows.
 
 ## Current verified milestone — shared console core, 2026-11-05
 

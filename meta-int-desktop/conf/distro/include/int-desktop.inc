@@ -1,5 +1,7 @@
 # Shared desktop profile. Include only from the separate desktop build directory.
 DISTRO_FEATURES:append = " wayland opengl"
+# Foot needs a UTF-8 locale; generate only the initial desktop fallback.
+GLIBC_GENERATE_LOCALES:pn-glibc-locale = "en_US.UTF-8"
 
 # The unversioned upstream recipes follow development branches at this layer pin.
 PREFERRED_VERSION_sway-1.11 = "1.11"

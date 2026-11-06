@@ -57,6 +57,7 @@ instrumented smoke run. No hardware or performance qualification is implied.
 
 ## Phase 3 — shared INT Desktop
 
+- [x] Build the shared Sway prototype and verify its unprivileged headless session, Wayland protocols, terminal and clean exit in QEMU. See [desktop validation](validation-desktop-2026-11-06.md).
 - [ ] Integrate the same lightweight tiling desktop foundation for both editions.
 - [ ] Provide original INT artwork, ASCII identity, dark theme, thin borders, and configurable layouts.
 - [ ] Provide terminal panes, keyboard navigation, session behavior, history, prompt/theme configuration, and optional transparency.
