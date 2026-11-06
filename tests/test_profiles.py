@@ -113,6 +113,21 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(['/work/fixtures', '/work/evidence', *argv[4:]], command[3:])
         self.assertEqual('feed', container.call_args.kwargs['profile'])
 
+    def test_run_launches_host_qemu_helper_without_lock_or_container(self):
+        argv = ['int', '--profile', 'desktop', 'run', '--reset']
+        with mock.patch('sys.argv', argv), mock.patch.object(helper, 'workdir', return_value=self.work), \
+                mock.patch.object(helper, 'operation_lock') as lock, \
+                mock.patch.object(helper, 'docker') as docker, \
+                mock.patch.object(helper.subprocess, 'run') as run:
+            run.return_value.returncode = 0
+            with self.assertRaises(SystemExit):
+                helper.main()
+        command = run.call_args.args[0]
+        self.assertTrue(command[1].endswith('scripts/qemu-run.py'))
+        self.assertEqual(['--profile', 'desktop', '--workdir', str(self.work), '--reset'], command[2:])
+        lock.assert_not_called()
+        docker.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

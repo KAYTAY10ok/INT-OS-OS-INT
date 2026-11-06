@@ -167,13 +167,13 @@ exec "$@"
 def parse_arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=["core", "desktop", "feed"], default="core")
-    parser.add_argument("command", choices=["bootstrap", "builder", "configure", "build", "shell", "check", "smoke", "core-check", "desktop-check", "graphics-check", "feed-check"])
+    parser.add_argument("command", choices=["bootstrap", "builder", "configure", "build", "shell", "check", "smoke", "core-check", "desktop-check", "graphics-check", "feed-check", "run"])
     parser.add_argument("target", nargs="?",
                         help="build target; for feed-check, the fixture disk directory followed by runner options")
     # Not argparse.REMAINDER: it would also swallow "--profile" given after the
     # command, silently selecting the default profile for every other command.
     args, extra = parser.parse_known_args(argv)
-    if extra and args.command != "feed-check":
+    if extra and args.command not in ("feed-check", "run"):
         parser.error("unrecognized arguments: " + " ".join(extra))
     args.extra = extra
     return args
@@ -183,6 +183,14 @@ def main():
     args = parse_arguments()
     work = workdir()
     work.mkdir(parents=True, exist_ok=True)
+    if args.command == "run":
+        # Interactive QEMU on the host (it may need a display). It only reads
+        # deployed artifacts and works on its own copies, so it takes no lock.
+        run_args = ["--profile", "desktop" if args.profile == "desktop" else "core", "--workdir", work]
+        if args.target:
+            run_args += ["--image", args.target]
+        command = [sys.executable, REPO / "scripts/qemu-run.py", *run_args, *args.extra]
+        sys.exit(subprocess.run(list(map(str, command)), check=False).returncode)
     with operation_lock(work):
         dispatch(args, work)
 
