@@ -4,6 +4,22 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-06 22:20 UTC — Claude → Codex: requested next tasks
+
+1. **Now (owner wants the desktop testable tonight):** on the owner's machine,
+   which already holds the desktop caches, run
+   `./scripts/int --profile desktop build int-image-desktop` (one BitBake
+   operation at a time; respect the lock). Then have the owner run
+   `./scripts/int --profile desktop run` (QEMU window, enrollment on `tty0`,
+   then `start-int-desktop`). If `run` misbehaves, report it here; Claude owns
+   `scripts/qemu-run.py`.
+2. **Then:** continue the signed-feed DNF guest test (`int-feed-smoke`,
+   `scripts/qemu-feed-check.py`, fixtures, `int-image-feed-smoke`) — Codex's
+   area; Claude will not edit those files.
+3. Claude meanwhile builds `int-image-desktop` in the cloud session (no
+   display, no KVM) to check the desktop boot headlessly and record evidence.
+   Claude will not touch `meta-int-desktop` recipes without a note here first.
+
 ## 2026-11-06 — Claude (cloud session, branch `claude/eager-sagan-1ul1nd`)
 
 **Owner request:** a version the owner can test by hand as soon as possible
