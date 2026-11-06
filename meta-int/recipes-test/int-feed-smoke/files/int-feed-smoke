@@ -47,6 +47,16 @@ gpgcheck=1
 repo_gpgcheck=1
 skip_if_unavailable=0
 EOF
+cat > "$work/repos/intfeed-missing-signature.repo" <<EOF
+[intfeed-missing-signature]
+name=INT disposable missing metadata signature feed
+baseurl=file://$work/mount/missing-metadata-signature
+enabled=0
+gpgkey=file://$work/trusted.asc
+gpgcheck=1
+repo_gpgcheck=1
+skip_if_unavailable=0
+EOF
 test "$(cat /sys/block/vdb/ro)" = 1
 mount -t ext4 -o ro,nosuid,nodev,noexec /dev/vdb "$work/mount"
 key="$work/mount/trusted-public-key.asc"
@@ -190,6 +200,63 @@ if test "$test_case" = wrong-key-rpm; then
     check_version 1.0
     echo 'INT_FEED_CHECK:unchanged-v1:PASS'
     echo 'INT_FEED_CASE:wrong-key-rpm:PASS'
+    result=PASS
+    exit 0
+fi
+if test "$test_case" = missing-metadata-signature; then
+    # Confirm the equivalent signed repository works before testing its copy
+    # with the detached signature deliberately omitted.
+    dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-v2 --refresh makecache
+    candidate=$(dnf -q -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-v2 \
+        repoquery --available --qf '%{name} %{version} %{release}' int-feed-probe)
+    test "$candidate" = 'int-feed-probe 2.0 r0'
+    check_version 1.0
+    echo 'INT_FEED_CHECK:signed-metadata-control:PASS'
+
+    missing="$work/mount/missing-metadata-signature"
+    valid="$work/mount/valid-v2"
+    test -s "$missing/repodata/repomd.xml"
+    test ! -e "$missing/repodata/repomd.xml.asc"
+    test -s "$missing/int-feed-probe-2.0-r0.noarch.rpm"
+    test -s "$valid/repodata/repomd.xml.asc"
+    # The detached signature from the valid feed must authenticate the
+    # candidate repomd with the independently pinned public key. DNF is not
+    # given this signature for the missing-signature repository.
+    gpg --batch --no-options --homedir "$work/home" --import "$work/trusted.asc" > "$work/gpg-import.log" 2>&1
+    gpg --batch --no-options --homedir "$work/home" --status-fd 1 --verify \
+        "$valid/repodata/repomd.xml.asc" "$missing/repodata/repomd.xml" > "$work/missing-control.log" 2>&1
+    cat "$work/missing-control.log"
+    grep -Fq "[GNUPG:] VALIDSIG $fingerprint " "$work/missing-control.log"
+    echo 'INT_FEED_CHECK:missing-signature-fixture:PASS'
+
+    # Keep this repository's cache and metadata trust separate from both
+    # successful control repositories, and fail instead of skipping it.
+    mkdir -m 0700 "$work/cache-missing" "$work/persist-missing"
+    cat > "$work/dnf-missing.conf" <<EOF
+[main]
+reposdir=$work/repos
+cachedir=$work/cache-missing
+persistdir=$work/persist-missing
+plugins=0
+gpgcheck=1
+localpkg_gpgcheck=1
+assumeyes=1
+EOF
+    if dnf -c "$work/dnf-missing.conf" --disablerepo='*' --enablerepo=intfeed-missing-signature \
+        --refresh makecache > "$work/missing-dnf.log" 2>&1; then
+        echo 'DNF unexpectedly accepted metadata without a signature' >&2
+        exit 1
+    else
+        dnf_status=$?
+    fi
+    cat "$work/missing-dnf.log"
+    test "$dnf_status" -ne 0
+    grep -Fq 'GPG verification is enabled, but GPG signature is not available' "$work/missing-dnf.log"
+    grep -Fq '/missing-metadata-signature/repodata/repomd.xml.asc' "$work/missing-dnf.log"
+    echo 'INT_FEED_CHECK:missing-signature-rejected:PASS'
+    check_version 1.0
+    echo 'INT_FEED_CHECK:unchanged-v1:PASS'
+    echo 'INT_FEED_CASE:missing-metadata-signature:PASS'
     result=PASS
     exit 0
 fi

@@ -62,6 +62,16 @@ CASE_MARKERS = {
         "INT_FEED_CASE:wrong-key-rpm:PASS",
         "INT_FEED_SHUTDOWN",
     ),
+    "missing-metadata-signature": (
+        "INT_FEED_CHECK:pin:PASS",
+        "INT_FEED_CHECK:install-v1:PASS",
+        "INT_FEED_CHECK:signed-metadata-control:PASS",
+        "INT_FEED_CHECK:missing-signature-fixture:PASS",
+        "INT_FEED_CHECK:missing-signature-rejected:PASS",
+        "INT_FEED_CHECK:unchanged-v1:PASS",
+        "INT_FEED_CASE:missing-metadata-signature:PASS",
+        "INT_FEED_SHUTDOWN",
+    ),
 }
 REQUIRED_PACKAGES = frozenset({"int-feed-smoke", "dnf", "rpm", "gnupg", "gnupg-gpg"})
 
