@@ -120,6 +120,43 @@ successful QEMU exit for a passing run. Failed or incomplete runs remain
 evidence of failure and must not replace a known-good image. Keep temporary
 private keys out of the VM and retained evidence.
 
+## Diagnostics to confirm in the guest
+
+The following expectations are derived from the locked source, not observed
+VM output. The access path, wrapper errors, locale and automatic key-import
+attempts can affect what DNF actually prints. Capture the complete bounded
+diagnostic and confirm the relevant stage in a real VM before fixing an
+assertion to a particular string. Set `LC_ALL=C` for test commands, and require
+a nonzero exit, the expected failure reason and unchanged RPM version and
+installed file. Use an independent positive control for the same operation,
+fresh cache and trust state for each case, and `skip_if_unavailable=0`.
+
+| Case | Source-derived diagnostic or behavior to investigate |
+| --- | --- |
+| Metadata signature missing | `librepo/yum.c` reports `GPG verification is enabled, but GPG signature ... not available`; the exact wording differs between the local-repository and download paths. |
+| Metadata signed by the wrong key or altered after signing | `librepo/yum.c` prefixes a failure with `repomd.xml GPG signature verification`; the GPGME backend can report `Bad GPG signature`. DNF may wrap or retry the error after importing the configured key. |
+| Referenced primary metadata altered | `librepo/yum.c` reports `Checksum mismatch` followed by the affected path when it reaches the checksum check. |
+| RPM changed after indexing | `libdnf/dnf-package.cpp` reports `Checksum mismatch in local repository` for a local package checksum mismatch; confirm the actual DNF path reaches this check. |
+| Unsigned RPM in freshly signed metadata | `dnf/base.py` can report `Package ... is not signed`, followed by `GPG check FAILED` from `dnf/cli/cli.py`. |
+| RPM signed by an untrusted key in freshly signed metadata | `dnf/base.py` detects a missing or untrusted public key; after the configured-key import attempt it may report that the repository keys are already installed but are not correct for the package. |
+| Corrupt RPM in freshly signed metadata | DNF's RPM output parser treats a `BAD` line as a fatal verification error, which can surface as a package-opening or GPG-check failure. Verify the reported cause and do not count an unrelated parse or missing-file failure as the intended rejection. |
+
+`dnf/rpm/miscutils.py` invokes `rpmkeys --checksig --verbose` with
+`_pkgverify_level signature` and `_pkgverify_flags 0x0`; this source path
+requires signatures rather than accepting a digest alone. The metadata and
+package keyrings are distinct, so importing the pinned package key into the
+RPM database does not itself establish metadata trust. Use correctly signed,
+freshly indexed metadata for the unsigned, wrong-key and corrupt RPM cases so
+that a stale repository checksum does not reject the fixture before the
+package check. No source inspection or synthetic test substitutes for proving
+the intended rejection path with the actual target tools.
+
+Source references: locked librepo `363cb70c6548be900832bc9b18ced3e7569da15a`
+(`librepo/yum.c`, `librepo/gpg_gpgme.c`), libdnf
+`d39573195e24b43687587a8d83b9f6ac274e2412` (`libdnf/dnf-package.cpp`), and
+DNF `e47634fbe3565d0580e89ec21adb7c1b308642ce` (`dnf/base.py`,
+`dnf/cli/cli.py`, `dnf/rpm/miscutils.py`).
+
 ## Points to confirm before implementation is considered validated
 
 - The feed-profile image builds with target Sequoia, DNF, suitable GnuPG
