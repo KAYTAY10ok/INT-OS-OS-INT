@@ -1,0 +1,105 @@
+#!/bin/sh
+# Run only by the root system unit on the trusted first-use console.
+# Password input and hashing belong to upstream passwd/PAM, never this script.
+set -eu
+set -f
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+LC_ALL=C
+export LC_ALL
+umask 077
+state=/var/lib/int-firstboot
+
+fail() { echo "INT_FIRSTBOOT_FAIL: $*" >&2; exit 1; }
+valid_name() {
+    case "$1" in ''|*[!a-z0-9_-]*) return 1 ;; esac
+    case "$1" in [a-z]*) ;; *) return 1 ;; esac
+    [ "${#1}" -le 31 ]
+}
+secure_file() {
+    [ ! -L "$1" ] && [ -f "$1" ] && [ "$(stat -c '%u:%a' "$1")" = 0:600 ]
+}
+read_record() {
+    secure_file "$1" || fail 'unsafe enrollment record'
+    IFS=' ' read -r owner owner_uid extra < "$1" || fail 'unreadable enrollment record'
+    valid_name "$owner" || fail 'invalid recorded account'
+    case "$owner_uid" in ''|*[!0-9]*) fail 'invalid recorded uid' ;; esac
+    [ "$owner_uid" -ge 1000 ] && [ "$owner_uid" -le 60000 ] || fail 'recorded uid outside owner range'
+    [ -z "$extra" ] && [ "$(wc -l < "$1")" -eq 1 ] || fail 'invalid enrollment record length'
+}
+write_record() {
+    target=$1
+    temporary=$(mktemp "$state/.record.XXXXXX")
+    printf '%s %s\n' "$owner" "$owner_uid" > "$temporary"
+    chmod 0600 "$temporary"
+    sync
+    mv -f "$temporary" "$state/$target"
+    sync
+}
+validate_account() {
+    record=$(getent passwd "$owner") || fail 'enrolled account missing'
+    actual_uid=$(printf '%s\n' "$record" | cut -d: -f3)
+    actual_home=$(printf '%s\n' "$record" | cut -d: -f6)
+    [ "$actual_uid" = "$owner_uid" ] && [ "$actual_home" = "/home/$owner" ] || fail 'enrolled account identity changed'
+}
+password_set() {
+    getent shadow "$owner" | awk -F: 'length($2)>0 && $2 !~ /^[!*]/ {ok=1} END {exit !ok}'
+}
+activate_owner() {
+    validate_account
+    password_set || fail 'committed account has no usable password'
+    getent group wheel >/dev/null || groupadd --system wheel
+    usermod -a -G wheel -s /bin/sh -e '' "$owner"
+    write_record complete
+    rm -f "$state/pending" "$state/committed"
+    sync
+    echo 'INT_OWNER_READY'
+}
+
+[ "$(id -u)" -eq 0 ] || fail 'requires root'
+[ ! -L "$state" ] || fail 'unsafe enrollment directory'
+if [ ! -e "$state" ]; then mkdir -m 0700 "$state"; fi
+[ -d "$state" ] && [ "$(stat -c '%u:%a' "$state")" = 0:700 ] || fail 'unsafe enrollment directory'
+exec 9> "$state/.lock"
+flock -n 9 || fail 'another enrollment is running'
+# Root remains locked, including during interrupted enrollment.
+getent shadow root | awk -F: '$1=="root" && $2 ~ /^[!*]/ {ok=1} END {exit !ok}' || fail 'root account must remain locked'
+if [ -e "$state/complete" ] || [ -L "$state/complete" ]; then
+    read_record "$state/complete"
+    exit 0
+fi
+if [ -e "$state/committed" ] || [ -L "$state/committed" ]; then
+    read_record "$state/committed"
+    activate_owner
+    exit 0
+fi
+if [ -e "$state/pending" ] || [ -L "$state/pending" ]; then
+    read_record "$state/pending"
+    validate_account
+else
+    echo 'INT Linux: create your owner account. Root stays locked.'
+    while :; do
+        printf 'INT_OWNER_USERNAME: '
+        IFS= read -r owner || fail 'console input ended'
+        if ! valid_name "$owner"; then echo 'Use 1-31 lowercase letters, digits, _ or -, starting with a letter.'; continue; fi
+        if getent passwd "$owner" >/dev/null || getent group "$owner" >/dev/null || [ -e "/home/$owner" ] || [ -L "/home/$owner" ]; then
+            echo 'This name or home already exists; choose another name.'
+            continue
+        fi
+        break
+    done
+    # Until the durable commit, no login shell, expiry cleared or sudo group.
+    useradd -m -U -b /home -G '' -K UID_MIN=1000 -K UID_MAX=60000 -K UMASK=077 -s /usr/sbin/nologin -e 1970-01-02 "$owner"
+    owner_uid=$(id -u "$owner")
+    write_record pending
+fi
+# A pending account must still be quarantined before prompting again.
+validate_account
+[ "$(getent passwd "$owner" | cut -d: -f7)" = /usr/sbin/nologin ] || fail 'pending account is no longer quarantined'
+getent shadow "$owner" | awk -F: '$8==1 {ok=1} END {exit !ok}' || fail 'pending account is not expired'
+if id -nG "$owner" | tr ' ' '\n' | grep -qx wheel; then fail 'pending account is already privileged'; fi
+echo 'Choose the owner password; input is hidden by passwd.'
+until passwd "$owner"; do echo 'Password not accepted; try again.'; done
+password_set || fail 'password enrollment did not succeed'
+write_record committed
+activate_owner

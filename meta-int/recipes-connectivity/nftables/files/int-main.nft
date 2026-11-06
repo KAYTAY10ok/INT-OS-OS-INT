@@ -1,0 +1,46 @@
+# INT owns this table only. The entire file is one nft transaction: an invalid
+# rule aborts the transaction, including the scoped flush. "add" is idempotent.
+add table inet int_filter
+flush table inet int_filter
+
+table inet int_filter {
+    chain input {
+        type filter hook input priority filter; policy drop;
+
+        iifname "lo" accept
+        ct state invalid drop
+        ct state { established, related } accept
+
+        # DHCP replies are needed before an address has been configured.
+        meta nfproto ipv4 udp sport 67 udp dport 68 accept
+        meta nfproto ipv6 udp sport 547 udp dport 546 accept
+
+        # IPv4 diagnostics and errors include path-MTU discovery.
+        meta nfproto ipv4 icmp type {
+            destination-unreachable, time-exceeded, parameter-problem,
+            echo-request, echo-reply
+        } accept
+
+        # IPv6 errors and diagnostics; ND must originate on the local link.
+        meta nfproto ipv6 icmpv6 type {
+            destination-unreachable, packet-too-big, time-exceeded,
+            parameter-problem, echo-request, echo-reply
+        } accept
+        meta nfproto ipv6 ip6 hoplimit 255 icmpv6 type {
+            nd-router-solicit, nd-router-advert,
+            nd-neighbor-solicit, nd-neighbor-advert
+        } accept
+        meta nfproto ipv6 ip6 hoplimit 1 icmpv6 type {
+            mld-listener-query, mld-listener-report,
+            mld-listener-done, mld2-listener-report
+        } accept
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+    }
+
+    chain output {
+        type filter hook output priority filter; policy accept;
+    }
+}

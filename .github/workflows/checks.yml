@@ -1,0 +1,31 @@
+name: Foundation checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  tooling:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install PTY test dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3-pexpect
+      - name: Check source preservation, enrollment and VM evidence
+        run: python3 -m unittest discover -s tests -v
+  metadata:
+    runs-on: ubuntu-24.04
+    env:
+      INT_WORKDIR: ${{ runner.temp }}/int-linux-work
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - run: ./scripts/int bootstrap
+      - run: ./scripts/int builder
+      - run: ./scripts/int configure
+      - run: ./scripts/int check
+# A real image build and guest boot remain required before a release. They need
+# the storage/time described in BUILDING.md and are not implied by this workflow.

@@ -1,0 +1,36 @@
+{
+  "series": "wrynose",
+  "yocto": "6.0 LTS maintenance snapshot",
+  "sources": {
+    "openembedded-core": {
+      "url": "https://git.openembedded.org/openembedded-core",
+      "revision": "ae5a301091f5b0574ea7444aab40b309b6d9f3f2"
+    },
+    "bitbake": {
+      "url": "https://git.openembedded.org/bitbake",
+      "revision": "6e260eb6ab1631607ea414d9ff8ede1155faa5d9"
+    },
+    "meta-openembedded": {
+      "url": "https://git.openembedded.org/meta-openembedded",
+      "revision": "c734c2cb9713dbd6d50697a9f6c25ebdf3ae589e"
+    },
+    "meta-wayland": {
+      "url": "https://codeberg.org/flk/meta-wayland.git",
+      "revision": "2b97daa23e0e612a087ea54b150bd0b8e0ff9378"
+    }
+  },
+  "kernel": {
+    "recipe": "linux-yocto_6.18.bb",
+    "version": "6.18.54",
+    "machine_revision": "8372c22a7d24c8fa15b62e13c1b5524a94caf9dc",
+    "metadata_revision": "366edfd67e22da481a7e6beb6386e1f7d19e71cf",
+    "local_version": "-int-core1",
+    "recipe_revision": "r1"
+  },
+  "profiles": {
+    "desktop": {
+      "kernel_local_version": "-int-desktop1",
+      "kernel_recipe_revision": "r2"
+    }
+  }
+}

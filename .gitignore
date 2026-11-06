@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+# Sources, caches and images belong in INT_WORKDIR, outside this checkout.
+/build/
+/downloads/
+/sstate-cache/

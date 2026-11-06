@@ -1,0 +1,59 @@
+#!/bin/sh
+set -eu
+result=FAIL
+finish() {
+    echo "INT_SMOKE_${result}"
+    if test "$result" != PASS; then
+        echo 'INT_DIAGNOSTIC:network:begin'
+        ip -details link show || true
+        ip -4 addr show || true
+        ip -4 route show || true
+        networkctl --no-pager status --all || true
+        journalctl --no-pager -b -u systemd-networkd -n 60 || true
+        echo 'INT_DIAGNOSTIC:network:end'
+    fi
+    sync
+    systemctl --no-block poweroff
+}
+trap finish EXIT
+
+test "$(uname -m)" = x86_64
+echo 'INT_CHECK:arch:PASS'
+test "$(cat /proc/1/comm)" = systemd
+echo 'INT_CHECK:init:PASS'
+. /etc/os-release
+test "$ID" = int-linux
+echo 'INT_CHECK:identity:PASS'
+getconf GNU_LIBC_VERSION | grep '^glibc '
+echo 'INT_CHECK:libc:PASS'
+test -r /proc/meminfo
+test -d /sys/class/net
+test -w /var/tmp
+probe=$(mktemp /var/tmp/int-smoke.XXXXXX)
+printf 'INT\n' > "$probe"
+test "$(cat "$probe")" = INT
+rm "$probe"
+echo 'INT_CHECK:filesystems:PASS'
+awk -F: '$1 == "root" && $2 ~ /^[!*]/ { found=1 } END { exit !found }' /etc/shadow
+echo 'INT_CHECK:root-locked:PASS'
+
+# QEMU restrict=on intentionally omits DHCP gateway/DNS options. Validate the
+# DHCP address and connected subnet, without requesting an external route.
+# libslirp v4.7.0 src/bootp.c adds gateway/DNS only when !slirp->restricted.
+attempt=0
+until ip -4 -o addr show up scope global | grep -q ' dynamic '; do
+    attempt=$((attempt + 1))
+    test "$attempt" -lt 30
+    sleep 1
+done
+systemctl is-active --quiet systemd-networkd
+interface=$(ip -4 -o addr show up scope global | awk '/dynamic/ { print $2; exit }')
+test -n "$interface"
+ip -4 addr show dev "$interface" scope global | grep 'inet '
+test "$(cat "/sys/class/net/$interface/operstate")" = up
+ip -4 route show dev "$interface" proto kernel scope link | grep .
+default_routes=$(ip -4 route show default)
+test -z "$default_routes"
+echo 'INT_CHECK:network:PASS'
+uname -r
+result=PASS

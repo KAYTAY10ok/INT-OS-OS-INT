@@ -1,0 +1,150 @@
+#!/bin/sh
+# Only for the disposable core smoke VM. All traffic stays on loopback or veth.
+set -eu
+
+probe="$(dirname "$0")/int-net-probe"
+config=/etc/nftables/rules/main.nft
+tmp=$(mktemp -d /run/int-firewall-check.XXXXXX)
+tag=${tmp##*.}
+namespace="intfw-$tag"
+# OE's wired profile excludes veth*. Keep the test links outside networkd's
+# DHCP ownership, which otherwise races and removes our static test address.
+host_if="veth${tag}h"
+peer_if="veth${tag}p"
+witness="int_smoke_$tag"
+marker="int-core-smoke-$tag"
+namespace_owned=0
+link_owned=0
+witness_owned=0
+rule_owned=0
+loop_pid=
+veth_pid=
+
+fail() {
+    echo "INT_FIREWALL_CHECK:FAIL:$*" >&2
+    exit 1
+}
+
+delete_own_rule() {
+    handles=$(nft -a list chain inet int_filter input 2>/dev/null |
+        awk -v marker="$marker" 'index($0, marker) { for (i=1; i<NF; i++) if ($i == "handle") print $(i+1) }')
+    for handle in $handles; do
+        case "$handle" in ''|*[!0-9]*) return 1 ;; esac
+        nft delete rule inet int_filter input handle "$handle" || return 1
+    done
+}
+
+cleanup() {
+    status=$?
+    trap - 0 1 2 15
+    if [ "$rule_owned" -eq 1 ]; then delete_own_rule || status=1; fi
+    for pid in "$loop_pid" "$veth_pid"; do
+        if [ -n "$pid" ]; then
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+        fi
+    done
+    if [ "$link_owned" -eq 1 ]; then ip link delete "$host_if" || status=1; fi
+    if [ "$namespace_owned" -eq 1 ]; then ip netns delete "$namespace" || status=1; fi
+    if [ "$witness_owned" -eq 1 ]; then nft delete table inet "$witness" || status=1; fi
+    rm -rf "$tmp" || status=1
+    exit "$status"
+}
+trap cleanup 0
+trap 'exit 129' 1
+trap 'exit 130' 2
+trap 'exit 143' 15
+
+wait_ready() {
+    ready=$1
+    pid=$2
+    attempts=0
+    until [ -s "$ready" ]; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            cat "$tmp/loop.log" "$tmp/veth.log" 2>/dev/null >&2 || true
+            fail 'probe server exited before listening'
+        fi
+        attempts=$((attempts + 1))
+        [ "$attempts" -lt 50 ] || fail 'probe server readiness timeout'
+        sleep 0.1
+    done
+}
+
+expect_blocked() {
+    source_port=$1
+    if ip netns exec "$namespace" "$probe" client 198.18.0.1 "$port" 2000 "$source_port" > "$tmp/blocked.log" 2>&1; then
+        fail 'new inbound TCP connection unexpectedly succeeded'
+    else
+        result=$?
+        if [ "$result" -ne 2 ]; then
+            cat "$tmp/blocked.log" >&2
+            fail "connection failed with $result instead of the required drop timeout"
+        fi
+    fi
+    kill -0 "$veth_pid" 2>/dev/null || fail 'veth server is not listening'
+}
+
+[ -x "$probe" ] || fail 'missing compiled int-net-probe helper'
+systemctl is-active --quiet nftables.service || fail 'nftables.service is not active'
+nft list chain inet int_filter input | grep -q 'hook input.*policy drop' || fail 'input policy is not drop'
+nft list chain inet int_filter forward | grep -q 'hook forward.*policy drop' || fail 'forward policy is not drop'
+nft list chain inet int_filter output | grep -q 'hook output.*policy accept' || fail 'output policy is not accept'
+
+# A separate, unhooked table proves reload does not erase another table owner.
+nft create table inet "$witness"
+witness_owned=1
+nft add chain inet "$witness" witness
+other_before=$(nft -s list table inet "$witness")
+before=$(nft -s list table inet int_filter)
+systemctl reload nftables.service
+[ "$(nft -s list table inet int_filter)" = "$before" ] || fail 'first reload changed or duplicated the policy'
+systemctl reload nftables.service
+[ "$(nft -s list table inet int_filter)" = "$before" ] || fail 'second reload changed or duplicated the policy'
+[ "$(nft -s list table inet "$witness")" = "$other_before" ] || fail 'reload modified an unrelated table'
+echo 'INT_FIREWALL_CHECK:reload:PASS'
+
+# Even a batch that includes the scoped flush must roll back when invalid.
+cat "$config" > "$tmp/invalid.nft"
+printf '\nadd rule inet int_filter missing_%s accept\n' "$tag" >> "$tmp/invalid.nft"
+if nft -f "$tmp/invalid.nft" > "$tmp/invalid.log" 2>&1; then fail 'invalid transaction was accepted'; fi
+[ "$(nft -s list table inet int_filter)" = "$before" ] || fail 'invalid transaction damaged active policy'
+[ "$(nft -s list table inet "$witness")" = "$other_before" ] || fail 'invalid transaction modified another table'
+echo 'INT_FIREWALL_CHECK:invalid-transaction:PASS'
+
+"$probe" server 127.0.0.1 0 "$tmp/loop.ready" 90000 > "$tmp/loop.log" 2>&1 &
+loop_pid=$!
+wait_ready "$tmp/loop.ready" "$loop_pid"
+loop_port=$(cat "$tmp/loop.ready")
+"$probe" client 127.0.0.1 "$loop_port" 2000 || fail 'loopback connection did not reach the test server'
+echo 'INT_FIREWALL_CHECK:loopback:PASS'
+
+ip netns add "$namespace"
+namespace_owned=1
+ip link add "$host_if" type veth peer name "$peer_if"
+link_owned=1
+ip link set "$peer_if" netns "$namespace"
+ip addr add 198.18.0.1/30 dev "$host_if"
+ip link set "$host_if" up
+ip netns exec "$namespace" ip link set lo up
+ip netns exec "$namespace" ip addr add 198.18.0.2/30 dev "$peer_if"
+ip netns exec "$namespace" ip link set "$peer_if" up
+"$probe" server 198.18.0.1 0 "$tmp/veth.ready" 90000 > "$tmp/veth.log" 2>&1 &
+veth_pid=$!
+wait_ready "$tmp/veth.ready" "$veth_pid"
+port=$(cat "$tmp/veth.ready")
+expect_blocked 23101
+echo 'INT_FIREWALL_CHECK:input-drop:PASS'
+
+printf 'insert rule inet int_filter input iifname "%s" ip saddr 198.18.0.2 ip daddr 198.18.0.1 tcp dport %s ct state new accept comment "%s"\n' \
+    "$host_if" "$port" "$marker" > "$tmp/allow.nft"
+nft -f "$tmp/allow.nft"
+rule_owned=1
+ip netns exec "$namespace" "$probe" client 198.18.0.1 "$port" 2000 23102 || fail 'controlled temporary accept rule did not permit the connection'
+echo 'INT_FIREWALL_CHECK:temporary-allow:PASS'
+delete_own_rule
+rule_owned=0
+# A distinct source port guarantees this is not the previous established flow.
+expect_blocked 23103
+[ "$(nft -s list table inet int_filter)" = "$before" ] || fail 'temporary accept rule was not removed'
+[ "$(nft -s list table inet "$witness")" = "$other_before" ] || fail 'connection tests modified another table'
+echo 'INT_FIREWALL_CHECK:restored-drop:PASS'

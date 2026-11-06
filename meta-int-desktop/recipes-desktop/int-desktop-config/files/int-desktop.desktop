@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=INT Desktop
+Comment=The shared INT desktop
+Exec=start-int-desktop
+Type=Application
+DesktopNames=sway

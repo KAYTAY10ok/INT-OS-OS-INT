@@ -1,0 +1,16 @@
+[Unit]
+Description=INT disposable image boot verification
+After=systemd-networkd.service systemd-resolved.service
+Before=serial-getty@ttyS0.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/int-boot-smoke
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/ttyS0
+TTYReset=no
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

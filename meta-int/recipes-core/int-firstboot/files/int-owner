@@ -1,0 +1,3 @@
+# Each administrative command requires authentication by the owner.
+Defaults:%wheel timestamp_timeout=0
+%wheel ALL=(ALL:ALL) PASSWD: ALL

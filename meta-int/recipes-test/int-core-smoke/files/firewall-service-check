@@ -1,0 +1,114 @@
+#!/bin/sh
+# Disposable guest VM only. Exercise the real networkd/firewall service gate.
+set -eu
+
+policy=/etc/nftables/rules/main.nft
+tmp=$(mktemp -d /run/int-firewall-service-check.XXXXXX)
+tag=${tmp##*.}
+backup_complete=0
+original_metadata=
+baseline=
+
+fail() {
+    echo "INT_FIREWALL_GATE:FAIL:$*" >&2
+    exit 1
+}
+
+restore() {
+    status=$?
+    trap - 0 1 2 15
+    restore_failed=0
+    if [ "$backup_complete" -eq 1 ]; then
+        if ! cp -p "$tmp/main.nft" "$policy"; then
+            echo 'INT_FIREWALL_GATE:FAIL:cannot restore policy file' >&2
+            restore_failed=1
+        elif [ "$(stat -c '%a:%u:%g' "$policy")" != "$original_metadata" ]; then
+            echo 'INT_FIREWALL_GATE:FAIL:restored policy mode/owner mismatch' >&2
+            restore_failed=1
+        fi
+        if [ "$restore_failed" -eq 0 ]; then
+            if ! systemctl reset-failed nftables.service systemd-networkd.service; then
+                restore_failed=1
+            fi
+            if ! systemctl restart nftables.service; then
+                echo 'INT_FIREWALL_GATE:FAIL:cannot restart restored firewall' >&2
+                restore_failed=1
+            elif ! systemctl restart systemd-networkd.service; then
+                echo 'INT_FIREWALL_GATE:FAIL:cannot restart networkd after restoring policy' >&2
+                restore_failed=1
+            elif ! systemctl is-active --quiet nftables.service ||
+                 ! systemctl is-active --quiet systemd-networkd.service; then
+                echo 'INT_FIREWALL_GATE:FAIL:restored services are not active' >&2
+                restore_failed=1
+            fi
+            restored=$(nft -s list table inet int_filter 2>/dev/null) || restore_failed=1
+            if [ "$restored" != "$baseline" ]; then
+                echo 'INT_FIREWALL_GATE:FAIL:restored kernel policy differs from original' >&2
+                restore_failed=1
+            fi
+        fi
+        if [ "$restore_failed" -ne 0 ]; then
+            # Keep a recoverable backup if restoration itself fails.
+            systemctl stop systemd-networkd.service 2>/dev/null || true
+            echo "INT_FIREWALL_GATE:FAIL:recovery backup retained at $tmp/main.nft" >&2
+            status=1
+        elif [ "$status" -eq 0 ]; then
+            echo 'INT_FIREWALL_GATE:restored:PASS'
+        fi
+    fi
+    if [ "$restore_failed" -eq 0 ]; then rm -rf "$tmp" || status=1; fi
+    exit "$status"
+}
+trap restore 0
+trap 'exit 129' 1
+trap 'exit 130' 2
+trap 'exit 143' 15
+
+assert_old_policy() {
+    current=$(nft -s list table inet int_filter) || fail 'old kernel policy is unreadable'
+    [ "$current" = "$baseline" ] || fail 'stopping or failing the service changed the old kernel policy'
+}
+
+expect_gate_failure() {
+    scenario=$1
+    if systemctl start systemd-networkd.service > "$tmp/$scenario.start.log" 2>&1; then
+        fail "$scenario policy allowed networkd startup"
+    fi
+    nft_state=$(systemctl show nftables.service -p ActiveState --value)
+    nft_result=$(systemctl show nftables.service -p Result --value)
+    nft_condition=$(systemctl show nftables.service -p ConditionResult --value)
+    network_state=$(systemctl show systemd-networkd.service -p ActiveState --value)
+    printf 'INT_FIREWALL_GATE:%s:nft=%s,result=%s,condition=%s,networkd=%s\n' \
+        "$scenario" "$nft_state" "$nft_result" "$nft_condition" "$network_state"
+    # A failed ExecStart proves this was not a ConditionPathExists skip.
+    [ "$nft_state" = failed ] || fail "$scenario firewall did not enter failed state"
+    [ "$nft_result" = exit-code ] || fail "$scenario firewall did not fail its policy load"
+    case "$network_state" in
+        inactive|failed) ;;
+        *) fail "$scenario networkd is not stopped" ;;
+    esac
+    assert_old_policy
+    echo "INT_FIREWALL_GATE:$scenario:PASS"
+}
+
+systemctl is-active --quiet nftables.service || fail 'firewall must be active before the gate test'
+systemctl is-active --quiet systemd-networkd.service || fail 'networkd must be active before the gate test'
+[ -f "$policy" ] && [ ! -L "$policy" ] || fail 'expected a regular installed policy file'
+original_metadata=$(stat -c '%a:%u:%g' "$policy")
+baseline=$(nft -s list table inet int_filter) || fail 'cannot snapshot the active kernel policy'
+cp -p "$policy" "$tmp/main.nft"
+backup_complete=1
+[ "$(stat -c '%a:%u:%g' "$tmp/main.nft")" = "$original_metadata" ] || fail 'backup did not preserve mode/owner'
+
+systemctl stop systemd-networkd.service nftables.service
+assert_old_policy
+rm "$policy"
+systemctl reset-failed nftables.service systemd-networkd.service
+expect_gate_failure missing-policy
+
+systemctl stop systemd-networkd.service nftables.service
+systemctl reset-failed nftables.service systemd-networkd.service
+cp -p "$tmp/main.nft" "$policy"
+# Valid syntax referencing a nonexistent chain rejects the entire policy batch.
+printf '\nadd rule inet int_filter missing_gate_%s accept\n' "$tag" >> "$policy"
+expect_gate_failure invalid-policy

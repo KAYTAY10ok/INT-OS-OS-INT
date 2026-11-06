@@ -1,0 +1,17 @@
+SUMMARY = "INT session launcher and shared desktop configuration"
+LICENSE = "MIT"
+LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
+SRC_URI = "file://start-int-desktop file://int-status file://sway-config file://foot.ini file://fuzzel.ini file://int-desktop.desktop"
+S = "${UNPACKDIR}"
+inherit allarch
+RDEPENDS:${PN} = "busybox dbus systemd sway-1.11 foot fuzzel"
+do_install() {
+    install -Dm0755 ${S}/start-int-desktop ${D}${bindir}/start-int-desktop
+    install -Dm0755 ${S}/int-status ${D}${libexecdir}/int-status
+    install -Dm0644 ${S}/sway-config ${D}${sysconfdir}/int/sway/config
+    install -Dm0644 ${S}/foot.ini ${D}${sysconfdir}/int/foot.ini
+    install -Dm0644 ${S}/fuzzel.ini ${D}${sysconfdir}/int/fuzzel.ini
+    install -Dm0644 ${S}/int-desktop.desktop ${D}${datadir}/wayland-sessions/int-desktop.desktop
+}
+FILES:${PN}:append = " ${datadir}/wayland-sessions/int-desktop.desktop"
+CONFFILES:${PN} = "${sysconfdir}/int/sway/config ${sysconfdir}/int/foot.ini ${sysconfdir}/int/fuzzel.ini"

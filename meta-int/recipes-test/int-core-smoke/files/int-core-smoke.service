@@ -1,0 +1,17 @@
+[Unit]
+Description=INT disposable account and firewall verification
+Requires=int-firstboot.service
+After=int-firstboot.service
+Before=getty.target serial-getty@ttyS0.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/int-core-smoke
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/ttyS0
+TTYReset=no
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,51 @@
+#!/bin/sh
+set -eu
+fail() {
+    echo "INT_CORE_FAIL:$*"
+    systemctl --no-pager --full status nftables.service systemd-networkd.service || true
+    journalctl --no-pager -b -u nftables -u systemd-networkd -n 50 || true
+    ip -4 addr show || true
+    ip -4 route show || true
+    exit 1
+}
+trap 'fail unexpected-error' 1 2 15
+[ "$(stat -c '%u:%a' /var/lib/int-firstboot)" = 0:700 ] || fail state-directory
+[ "$(stat -c '%u:%a' /var/lib/int-firstboot/complete)" = 0:600 ] || fail owner-record
+read -r owner owner_uid < /var/lib/int-firstboot/complete
+[ "$(id -u "$owner")" = "$owner_uid" ] && [ "$owner_uid" -ge 1000 ] || fail owner-uid
+id -nG "$owner" | tr ' ' '\n' | grep -qx wheel || fail owner-group
+getent shadow root | awk -F: '$2 ~ /^[!*]/ {ok=1} END {exit !ok}' || fail root-unlocked
+getent shadow "$owner" | awk -F: 'length($2)>0 && $2 !~ /^[!*]/ && $8=="" {ok=1} END {exit !ok}' || fail owner-password
+[ "$(getent passwd "$owner" | cut -d: -f7)" = /bin/sh ] || fail owner-shell
+visudo -c >/dev/null || fail sudo-policy
+if grep -Eq '(^|[[:space:]])nullok(_secure)?([[:space:]]|$)' /etc/pam.d/common-auth; then fail pam-empty-password-policy; fi
+# Running enrollment again must preserve the existing account databases.
+before=$(sha256sum /etc/passwd /etc/group /etc/shadow /var/lib/int-firstboot/complete)
+/usr/libexec/int-firstboot || fail repeat-enrollment
+[ "$(sha256sum /etc/passwd /etc/group /etc/shadow /var/lib/int-firstboot/complete)" = "$before" ] || fail enrollment-not-idempotent
+# Console acquisition may leave a terminal-control query without a newline.
+printf '\nINT_CORE_CHECK:owner:PASS\n'
+# Poll instead of an After= edge: the following tests deliberately stop/restart
+# these units while this oneshot's start job is still running.
+attempts=0
+until systemctl is-active --quiet nftables.service && systemctl is-active --quiet systemd-networkd.service; do
+    attempts=$((attempts + 1))
+    [ "$attempts" -lt 30 ] || fail firewall-or-network-not-active
+    sleep 1
+done
+/usr/libexec/int-core-test/firewall-check || fail firewall
+/usr/libexec/int-core-test/firewall-service-check || fail firewall-service-gate
+# Verify DHCP still works through the installed policy after service recovery.
+attempts=0
+until ip -4 -o addr show up scope global | grep -q ' dynamic '; do
+    attempts=$((attempts + 1))
+    [ "$attempts" -lt 30 ] || fail dhcp-not-configured
+    sleep 1
+done
+interface=$(ip -4 -o addr show up scope global | awk '/dynamic/ {print $2; exit}')
+[ -n "$interface" ] && [ "$(cat "/sys/class/net/$interface/operstate")" = up ] || fail network-link
+ip -4 route show dev "$interface" proto kernel scope link | grep . || fail connected-route
+[ -z "$(ip -4 route show default)" ] || fail unexpected-default-route
+echo 'INT_CORE_CHECK:network:PASS'
+echo 'INT_CORE_CHECK:firewall:PASS'
+echo 'INT_CORE_READY'

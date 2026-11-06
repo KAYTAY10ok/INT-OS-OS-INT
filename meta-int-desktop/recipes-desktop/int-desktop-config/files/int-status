@@ -1,0 +1,24 @@
+#!/bin/sh
+# Swaybar owns the pipe and this process. No detached polling daemon.
+# Thirty-second clock updates; no speculative CPU/RAM sampling or external I/O.
+set -eu
+export LC_ALL=C
+sleep_pid=
+cleanup() {
+    status=$?
+    trap - 0 1 2 13 15
+    if [ -n "$sleep_pid" ]; then
+        kill "$sleep_pid" 2>/dev/null || true
+        wait "$sleep_pid" 2>/dev/null || true
+    fi
+    exit "$status"
+}
+trap cleanup 0
+trap 'exit 0' 1 2 13 15
+while :; do
+    date '+INT  |  %a %d %b  %H:%M'
+    sleep 30 &
+    sleep_pid=$!
+    wait "$sleep_pid"
+    sleep_pid=
+done

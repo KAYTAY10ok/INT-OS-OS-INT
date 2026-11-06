@@ -1,0 +1,155 @@
+#!/bin/sh
+# Disposable guest only: a headless Pixman session does not qualify a DRM seat.
+set -eu
+PATH=/usr/bin:/bin
+LC_ALL=C
+export PATH LC_ALL
+umask 077
+
+case "${1:-}" in
+    '') exec timeout --signal=TERM --kill-after=10 120 "$0" --run ;;
+    --run) ;;
+    *) echo 'INT_DESKTOP_USER_FAIL:invalid invocation' >&2; exit 1 ;;
+esac
+
+tmp=
+session_pid=
+terminal_pid=
+SWAYSOCK=
+completed=0
+fail() { echo "INT_DESKTOP_USER_FAIL:$*" >&2; exit 1; }
+
+stop_group() {
+    group=$1
+    [ -n "$group" ] || return 0
+    kill -TERM "-$group" 2>/dev/null || true
+    sleep 0.2
+    kill -KILL "-$group" 2>/dev/null || true
+    wait "$group" 2>/dev/null || true
+}
+
+cleanup() {
+    status=$?
+    trap - 0 1 2 15
+    if [ -n "$tmp" ]; then
+        # The controlled terminal child exits even if its PTY outlives foot.
+        : > "$tmp/terminal.done" || status=1
+    fi
+    if [ -n "${SWAYSOCK:-}" ]; then
+        timeout 2 swaymsg -s "$SWAYSOCK" exit >/dev/null 2>&1 || true
+    fi
+    stop_group "$terminal_pid"
+    stop_group "$session_pid"
+    if [ "$status" -ne 0 ] || [ "$completed" -ne 1 ]; then
+        echo 'INT_DESKTOP_USER_FAIL:headless checks incomplete' >&2
+        if [ -n "$tmp" ]; then
+            for log in sway.log terminal.log config.log wayland.log; do
+                if [ -f "$tmp/$log" ]; then
+                    echo "INT_DESKTOP_DIAGNOSTIC:$log" >&2
+                    tail -n 40 "$tmp/$log" >&2 || true
+                fi
+            done
+        fi
+        status=1
+    fi
+    if [ -n "$tmp" ]; then rm -rf "$tmp" || status=1; fi
+    if [ "$status" -eq 0 ]; then printf '\nINT_DESKTOP_USER_PASS\n'; fi
+    exit "$status"
+}
+trap cleanup 0
+trap 'exit 129' 1
+trap 'exit 130' 2
+trap 'exit 143' 15
+
+uid=$(id -u)
+[ "$uid" -ge 1000 ] || fail 'requires an unprivileged owner'
+[ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ] && [ ! -L "$XDG_RUNTIME_DIR" ] || fail 'missing login runtime directory'
+[ "$(stat -c '%u:%a' "$XDG_RUNTIME_DIR")" = "$uid:700" ] || fail 'login runtime directory ownership/mode'
+tmp=$(mktemp -d "$XDG_RUNTIME_DIR/int-desktop-check.XXXXXX")
+mkdir -m0700 "$tmp/runtime"
+XDG_RUNTIME_DIR="$tmp/runtime"
+XDG_CURRENT_DESKTOP=sway
+XDG_SESSION_DESKTOP=sway
+XDG_SESSION_TYPE=wayland
+WLR_BACKENDS=headless
+WLR_RENDERER=pixman
+WLR_HEADLESS_OUTPUTS=1
+WLR_LIBINPUT_NO_DEVICES=1
+export XDG_RUNTIME_DIR XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE
+export WLR_BACKENDS WLR_RENDERER WLR_HEADLESS_OUTPUTS WLR_LIBINPUT_NO_DEVICES
+
+# setsid makes these test-owned groups safe to terminate without pkill/killall.
+setsid dbus-run-session -- sway --config=/etc/int/sway/config </dev/null > "$tmp/sway.log" 2>&1 &
+session_pid=$!
+attempt=0
+while :; do
+    kill -0 "$session_pid" 2>/dev/null || fail 'compositor exited during startup'
+    sockets=0
+    for socket in "$XDG_RUNTIME_DIR"/sway-ipc.*.sock; do
+        [ -S "$socket" ] || continue
+        SWAYSOCK=$socket
+        sockets=$((sockets + 1))
+    done
+    [ "$sockets" -le 1 ] || fail 'ambiguous compositor IPC socket'
+    [ "$sockets" -eq 0 ] || break
+    attempt=$((attempt + 1))
+    [ "$attempt" -lt 150 ] || fail 'compositor startup deadline'
+    sleep 0.2
+done
+export SWAYSOCK
+ipc() { timeout 5 swaymsg -s "$SWAYSOCK" "$@"; }
+
+ipc -t get_version > "$tmp/version.json" || fail 'compositor IPC version'
+jq -e '.major == 1 and .minor == 11 and .loaded_config_file_name == "/etc/int/sway/config"' "$tmp/version.json" >/dev/null || fail 'stable compositor/config identity'
+ipc -t get_outputs > "$tmp/outputs.json" || fail 'compositor IPC outputs'
+jq -e 'length == 1 and .[0].active == true and (.[0].name | startswith("HEADLESS-")) and .[0].rect.width > 0 and .[0].rect.height > 0' "$tmp/outputs.json" >/dev/null || fail 'active headless output'
+echo 'INT_DESKTOP_CHECK:output:PASS'
+
+displays=0
+for socket in "$XDG_RUNTIME_DIR"/wayland-*; do
+    [ -S "$socket" ] || continue
+    WAYLAND_DISPLAY=${socket##*/}
+    displays=$((displays + 1))
+done
+[ "$displays" -eq 1 ] || fail 'ambiguous Wayland display socket'
+export WAYLAND_DISPLAY
+timeout 10 wayland-info > "$tmp/wayland.log" 2>&1 || fail 'Wayland client connection'
+for interface in wl_compositor wl_shm xdg_wm_base; do
+    grep -Fq "interface: '$interface'" "$tmp/wayland.log" || fail "missing Wayland interface $interface"
+done
+echo 'INT_DESKTOP_CHECK:protocol:PASS'
+
+timeout 10 foot --check-config --config=/etc/int/foot.ini > "$tmp/config.log" 2>&1 || fail 'terminal configuration'
+timeout 10 fuzzel --check-config --config=/etc/int/fuzzel.ini >> "$tmp/config.log" 2>&1 || fail 'launcher configuration'
+echo 'INT_DESKTOP_CHECK:config:PASS'
+
+setsid foot --config=/etc/int/foot.ini --app-id=int-test-terminal --title='INT desktop check' \
+    /bin/sh -c 'id -u > "$1"; printf "INT terminal check\n"; n=0; while [ ! -f "$2" ] && [ "$n" -lt 300 ]; do n=$((n+1)); sleep 0.2; done' \
+    sh "$tmp/terminal.uid" "$tmp/terminal.done" </dev/null > "$tmp/terminal.log" 2>&1 &
+terminal_pid=$!
+attempt=0
+while :; do
+    kill -0 "$terminal_pid" 2>/dev/null || fail 'terminal exited before mapping'
+    ipc -t get_tree > "$tmp/tree.json" || fail 'compositor IPC tree'
+    if [ -s "$tmp/terminal.uid" ] && jq -e '[.. | objects | select(.app_id? == "int-test-terminal" and .rect.width > 0 and .rect.height > 0)] | length == 1' "$tmp/tree.json" >/dev/null; then
+        break
+    fi
+    attempt=$((attempt + 1))
+    [ "$attempt" -lt 150 ] || fail 'terminal mapping deadline'
+    sleep 0.2
+done
+[ "$(cat "$tmp/terminal.uid")" = "$uid" ] || fail 'terminal child privilege changed'
+echo 'INT_DESKTOP_CHECK:terminal:PASS'
+: > "$tmp/terminal.done"
+
+ipc exit > "$tmp/exit.json" || fail 'compositor session exit request'
+attempt=0
+while kill -0 "$session_pid" 2>/dev/null; do
+    attempt=$((attempt + 1))
+    [ "$attempt" -lt 50 ] || fail 'compositor exit deadline'
+    sleep 0.1
+done
+wait "$session_pid" || fail 'compositor session returned failure'
+session_pid=
+echo 'INT_DESKTOP_CHECK:exit:PASS'
+completed=1
