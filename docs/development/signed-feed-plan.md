@@ -145,7 +145,11 @@ are a source-based proposal until exercised with OpenPGP-enabled RPM.
 
 ## Proposed read-only audit helper
 
-The narrow interface for a later `scripts/feed-check.py` is:
+`scripts/feed-check.py` now implements this interface; see
+[feed-check.md](feed-check.md) for its checks, host-rehearsal results with
+Ubuntu tools and limits. It has not yet been run with OE native tools.
+
+The narrow interface for `scripts/feed-check.py` is:
 
 ```text
 feed-check.py FEED_DIRECTORY
