@@ -19,8 +19,11 @@ client or claims verified updates.
 
 An isolated `feed` build profile selects OpenPGP-capable native and target RPM.
 Its configuration is separate from the known-good images; selecting a backend
-does not establish that it builds or verifies signatures. Actual signing,
-tamper rejection, update and recovery tests are still open.
+does not establish that it builds or verifies signatures. A test-only guest
+service and QEMU runner for signed `file://` install, update and rejection
+cases exist ([feed VM plan](docs/development/feed-vm-plan.md)) but have not
+been built or run. Actual signing, tamper rejection, update and recovery
+results are still open.
 
 An eventual `int-pkg` can wrap that mature backend after its semantics are tested.
 Do not create a new dependency solver or claim rollback without an implemented

@@ -203,3 +203,32 @@ Poursuis ensuite les autres étapes de la spécification par petits jalons
 vérifiables, en conservant une architecture partagée INT-OS / OS-INT. Si une
 action dépend d'un secret, d'un accès indisponible ou d'une décision produit
 essentielle, expose précisément le blocage et termine le travail indépendant.
+
+## Avancement 2026-11-06
+
+- Ajouté : le paquet de test `int-feed-smoke`
+  (`meta-int/recipes-test/int-feed-smoke`), installé uniquement dans
+  `int-image-feed-smoke`. Un démarrage exécute un seul cas DNF (mise à jour
+  valide et idempotence, ou l'un des dix cas de rejet), lit l'empreinte
+  attendue sur la ligne de commande du noyau (`int.feed_fpr`), monte le disque
+  de fixtures `INTFEED` en lecture seule (`nosuid,nodev,noexec,noload`),
+  vérifie une signature `rpmkeys` valide et le rejet `NOKEY` avec une base de
+  confiance vide, puis éteint la VM.
+- Ajouté : `scripts/qemu-feed-check.py` et
+  `./scripts/int --profile feed feed-check /work/feed-disks/NAME --fingerprint FPR --feed-sha256 SHA [--case NAME]...`.
+  Pas de carte réseau, disque racine en instantané, disque de fixtures en
+  `readonly=on` et vérifié par hash avant et après chaque cas.
+  `INT_DOCKER_NETWORK=host` est documenté dans [BUILDING.md](../../BUILDING.md).
+  Procédure exacte : [feed-vm-plan.md](feed-vm-plan.md).
+- **Rien n'a encore été construit ni démarré** : image, laboratoire natif
+  `int-feed-lab-native`, paquets de test et fixtures restent à produire ; une
+  compilation de `int-feed-lab-native` est en cours. Les diagnostics DNF
+  attendus proviennent d'une répétition sur l'hôte avec les outils Ubuntu
+  24.04 (DNF 4.14, RPM 4.18, createrepo_c 0.17.3, GnuPG 2.4.4), où le
+  générateur et les onze cas ont réussi. Ce n'est pas une preuve OE ni invité :
+  à confirmer avec DNF 4.24 et RPM 4.20.1 + Sequoia d'OE.
+- Limites connues : aucun cas avec moteur OpenPGP RPM désactivé (seul le
+  contrôle positif existe) ; les clés de laboratoire expirent après un jour,
+  donc fixtures, disque et exécutions VM doivent tenir dans ce délai ;
+  fraîcheur/rejeu, rotation des clés, reprise après interruption, transport
+  réseau et garde des clés de production restent hors périmètre.
