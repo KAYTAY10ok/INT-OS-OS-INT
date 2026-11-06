@@ -51,6 +51,17 @@ CASE_MARKERS = {
         "INT_FEED_CASE:unsigned-rpm:PASS",
         "INT_FEED_SHUTDOWN",
     ),
+    "wrong-key-rpm": (
+        "INT_FEED_CHECK:pin:PASS",
+        "INT_FEED_CHECK:install-v1:PASS",
+        "INT_FEED_CHECK:wrong-key-metadata:PASS",
+        "INT_FEED_CHECK:trusted-rpmkeys:PASS",
+        "INT_FEED_CHECK:wrong-key-rpmkeys:PASS",
+        "INT_FEED_CHECK:wrong-key-dnf-rejected:PASS",
+        "INT_FEED_CHECK:unchanged-v1:PASS",
+        "INT_FEED_CASE:wrong-key-rpm:PASS",
+        "INT_FEED_SHUTDOWN",
+    ),
 }
 REQUIRED_PACKAGES = frozenset({"int-feed-smoke", "dnf", "rpm", "gnupg", "gnupg-gpg"})
 

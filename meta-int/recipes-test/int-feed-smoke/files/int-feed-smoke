@@ -37,6 +37,16 @@ gpgcheck=1
 repo_gpgcheck=1
 skip_if_unavailable=0
 EOF
+cat > "$work/repos/intfeed-wrong-key.repo" <<EOF
+[intfeed-wrong-key]
+name=INT disposable wrong-key package feed
+baseurl=file://$work/mount/wrong-key-rpm
+enabled=0
+gpgkey=file://$work/trusted.asc
+gpgcheck=1
+repo_gpgcheck=1
+skip_if_unavailable=0
+EOF
 test "$(cat /sys/block/vdb/ro)" = 1
 mount -t ext4 -o ro,nosuid,nodev,noexec /dev/vdb "$work/mount"
 key="$work/mount/trusted-public-key.asc"
@@ -130,6 +140,56 @@ if test "$test_case" = unsigned-rpm; then
     check_version 1.0
     echo 'INT_FEED_CHECK:unchanged-v1:PASS'
     echo 'INT_FEED_CASE:unsigned-rpm:PASS'
+    result=PASS
+    exit 0
+fi
+if test "$test_case" = wrong-key-rpm; then
+    # The metadata is signed by the pinned key, but the package is signed by
+    # a different, untrusted key. Resolve version 2 before testing rejection.
+    dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-wrong-key --refresh makecache
+    candidate=$(dnf -q -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-wrong-key \
+        repoquery --available --qf '%{name} %{version} %{release}' int-feed-probe)
+    test "$candidate" = 'int-feed-probe 2.0 r0'
+    echo 'INT_FEED_CHECK:wrong-key-metadata:PASS'
+
+    # Establish that this target RPM backend can verify a package signed by
+    # the pinned key before attributing the next failure to missing trust.
+    trusted="$work/mount/valid-v2/int-feed-probe-2.0-r0.noarch.rpm"
+    rpmkeys --define '_pkgverify_level all' --checksig --verbose "$trusted" > "$work/trusted-rpmkeys.log" 2>&1
+    cat "$work/trusted-rpmkeys.log"
+    grep -Eiq 'signature.*:[[:space:]]*OK[[:space:]]*$' "$work/trusted-rpmkeys.log"
+    grep -Eiq 'digest.*:[[:space:]]*OK[[:space:]]*$' "$work/trusted-rpmkeys.log"
+    echo 'INT_FEED_CHECK:trusted-rpmkeys:PASS'
+
+    package="$work/mount/wrong-key-rpm/int-feed-probe-2.0-r0.noarch.rpm"
+    if rpmkeys --define '_pkgverify_level all' --checksig --verbose "$package" > "$work/wrong-key-rpmkeys.log" 2>&1; then
+        echo 'Wrong-key package unexpectedly passed strict RPM verification' >&2
+        exit 1
+    fi
+    cat "$work/wrong-key-rpmkeys.log"
+    grep -Eiq 'signature.*:[[:space:]]*NOKEY[[:space:]]*$' "$work/wrong-key-rpmkeys.log"
+    grep -Eiq 'digest.*:[[:space:]]*OK[[:space:]]*$' "$work/wrong-key-rpmkeys.log"
+    if grep -Eiq 'signature.*:[[:space:]]*OK[[:space:]]*$' "$work/wrong-key-rpmkeys.log"; then
+        echo 'Unexpected trusted signature on wrong-key package' >&2
+        exit 1
+    fi
+    echo 'INT_FEED_CHECK:wrong-key-rpmkeys:PASS'
+
+    if dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-wrong-key \
+        upgrade int-feed-probe > "$work/wrong-key-dnf.log" 2>&1; then
+        echo 'DNF unexpectedly accepted wrong-key upgrade' >&2
+        exit 1
+    else
+        dnf_status=$?
+    fi
+    cat "$work/wrong-key-dnf.log"
+    test "$dnf_status" -ne 0
+    grep -Fq 'already installed but they are not correct for this package' "$work/wrong-key-dnf.log"
+    grep -Fq 'GPG check FAILED' "$work/wrong-key-dnf.log"
+    echo 'INT_FEED_CHECK:wrong-key-dnf-rejected:PASS'
+    check_version 1.0
+    echo 'INT_FEED_CHECK:unchanged-v1:PASS'
+    echo 'INT_FEED_CASE:wrong-key-rpm:PASS'
     result=PASS
     exit 0
 fi

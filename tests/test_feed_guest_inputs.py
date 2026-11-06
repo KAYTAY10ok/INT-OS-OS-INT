@@ -31,6 +31,9 @@ class GuestInputTests(unittest.TestCase):
         command = f'console=ttyS0 int_feed_case=unsigned-rpm int_feed_fingerprint={FINGERPRINT}'
         self.assertEqual(self.run_helper('int-feed-args', command).stdout, FINGERPRINT + '\n')
         self.assertEqual(self.run_helper('int-feed-args', command, '--case').stdout, 'unsigned-rpm\n')
+        command = f'console=ttyS0 int_feed_case=wrong-key-rpm int_feed_fingerprint={FINGERPRINT}'
+        self.assertEqual(self.run_helper('int-feed-args', command).stdout, FINGERPRINT + '\n')
+        self.assertEqual(self.run_helper('int-feed-args', command, '--case').stdout, 'wrong-key-rpm\n')
         for cmdline in (f'int_feed_case=success int_feed_fingerprint={FINGERPRINT.lower()}',
                         f'int_feed_case=fail int_feed_fingerprint={FINGERPRINT}',
                         f'int_feed_case= int_feed_case=success int_feed_fingerprint={FINGERPRINT}',
