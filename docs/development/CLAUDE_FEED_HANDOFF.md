@@ -60,9 +60,11 @@ inspecte leur provenance avant de les modifier ou de les ajouter.
 - Les 87 tests hôte de la suite existante ont réussi ; journal
   `/workspace/int-linux-work/host-tests-fixtures.log`. Ils ne remplacent pas
   les tests natifs et invités.
-- Un fichier expérimental non suivi `scripts/feed-disk.py` a été laissé par un
-  agent interrompu et fait l'objet d'une relecture. Vérifie son statut et sa
-  provenance avant de le modifier, l'ajouter ou le considérer terminé.
+- `scripts/feed-disk.py` prépare un disque EXT4 à partir de fixtures contrôlées
+  par leur manifeste. Ses cinq tests passent dans le conteneur, y compris la
+  création et la lecture d'une image synthétique. Il ne vérifie pas les
+  signatures et n'a pas été utilisé avec QEMU ou les fixtures signées réelles ;
+  voir [feed-disk.md](feed-disk.md).
 - Les preuves et caches volumineux sont hors dépôt, sous
   `/workspace/int-linux-work`. Leur présence et l'espace libre doivent être
   revérifiés ; ne supprime pas arbitrairement des données ou caches existants.
@@ -140,7 +142,7 @@ pris au hasard dans plusieurs répertoires.
    construite ne démontre ni démarrage ni politique de signature.
 4. Implémente et vérifie le transport du dépôt local vers QEMU et le service
    de test isolé décrits dans [feed-vm-plan.md](feed-vm-plan.md). Un outil de
-   disque peut être en cours de développement au moment de la passation :
+   disque existe mais doit encore être intégré et validé avec QEMU :
    inspecte `git status` avant de créer ou remplacer quoi que ce soit. Monte
    le disque de fixtures en lecture seule, sans clé privée et sans port réseau
    exposé ; protège les entrées et conserve leurs empreintes avant et après.
