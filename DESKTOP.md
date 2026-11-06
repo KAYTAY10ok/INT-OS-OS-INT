@@ -19,6 +19,6 @@ separate profile documented in `BUILDING.md`; real input and physical hardware
 tests remain necessary after the virtual compositor/client verification.
 
 The subsequent [graphics VM test](docs/development/validation-graphics-2026-11-06.md)
-also verifies the real local PAM/logind seat, Virtio VGA output, owner terminal and
-clean session exit. It captures the rendered 1280×800 screen. Input devices,
-launcher selection and physical GPUs remain unqualified.
+also verifies the real local PAM/logind seat, Virtio VGA output, keyboard shortcuts,
+launcher selection, owner terminal and clean session exit. It captures the rendered
+1280×800 screen. Physical input devices and GPUs remain unqualified.

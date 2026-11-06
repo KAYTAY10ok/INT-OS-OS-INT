@@ -40,16 +40,25 @@ class GraphicsTests(unittest.TestCase):
     def test_graphics_markers_and_unchanged_frame_are_required(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)/'screen.ppm'
+            launcher = Path(directory)/'launcher.ppm'
             path.write_bytes(frame())
-            process = dict(fixtures.EXIT_OK, graphics_frame=graphics.inspect_frame(path))
-            log = fixtures.PASS_LOG.replace('INT_CORE_ROOT_PASS', 'INT_GRAPHICS_READY\nINT_GRAPHICS_EXIT_PASS\nINT_CORE_ROOT_PASS')
-            self.assertTrue(graphics.analyze(log, process, path)['passed'])
-            for invalid in (log.replace('INT_GRAPHICS_READY\n', ''),
+            opened = bytearray(frame()); opened[-1] = 10
+            launcher.write_bytes(opened)
+            process = dict(fixtures.EXIT_OK, graphics_frame=graphics.inspect_frame(path),
+                           launcher_frame=graphics.inspect_frame(launcher),
+                           launcher_changed_bytes=graphics.frame_difference(path, launcher))
+            log = fixtures.PASS_LOG.replace('INT_CORE_ROOT_PASS', 'INT_GRAPHICS_KEYBOARD_READY\nINT_GRAPHICS_LAUNCHER_READY\nINT_GRAPHICS_LAUNCHER_VISIBLE\nINT_GRAPHICS_SELECTION_PASS\nINT_GRAPHICS_EXIT_PASS\nINT_CORE_ROOT_PASS')
+            self.assertTrue(graphics.analyze(log, process, path, launcher)['passed'])
+            for invalid in (log.replace('INT_GRAPHICS_KEYBOARD_READY\n', ''),
+                            log.replace('INT_GRAPHICS_LAUNCHER_VISIBLE\n', ''),
+                            log.replace('INT_GRAPHICS_SELECTION_PASS\n', ''),
                             log.replace('INT_GRAPHICS_EXIT_PASS\n', ''),
-                            log+'INT_GRAPHICS_READY\n'):
-                self.assertFalse(graphics.analyze(invalid, process, path)['passed'])
+                            log+'INT_GRAPHICS_KEYBOARD_READY\n'):
+                self.assertFalse(graphics.analyze(invalid, process, path, launcher)['passed'])
+            launcher.write_bytes(frame())
+            self.assertFalse(graphics.analyze(log, process, path, launcher)['passed'])
             path.write_bytes(frame()[:-1])
-            self.assertFalse(graphics.analyze(log, process, path)['passed'])
+            self.assertFalse(graphics.analyze(log, process, path, launcher)['passed'])
 
     def test_qmp_uses_a_local_socket_and_captures_requested_file(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -76,6 +85,33 @@ class GraphicsTests(unittest.TestCase):
             self.assertFalse(thread.is_alive())
             self.assertEqual([item['execute'] for item in requests], ['qmp_capabilities', 'screendump'])
             self.assertEqual(result['snapshot'], str(target))
+
+    def test_keyboard_shortcut_sends_ordered_press_and_release_events(self):
+        with tempfile.TemporaryDirectory() as directory:
+            sockpath = Path(directory)/'qmp.sock'
+            ready = threading.Event()
+            events = []
+            def server():
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                    listener.bind(str(sockpath)); listener.listen(1); ready.set()
+                    with listener.accept()[0] as conn:
+                        stream = conn.makefile('rwb', buffering=0)
+                        stream.write(b'{"QMP":{}}\n')
+                        for _ in range(5):
+                            request = json.loads(stream.readline())
+                            if request['execute'] == 'input-send-event':
+                                event = request['arguments']['events'][0]['data']
+                                events.append((event['key']['data'], event['down']))
+                            stream.write(b'{"return":{}}\n')
+            thread = threading.Thread(target=server, daemon=True)
+            thread.start()
+            self.assertTrue(ready.wait(2))
+            graphics.shortcut(sockpath, 'ret')
+            thread.join(2)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(events, [('meta_l', True), ('ret', True), ('ret', False), ('meta_l', False)])
+            with self.assertRaises(ValueError):
+                graphics.shortcut(sockpath, 'untrusted-key')
 
 
 if __name__ == '__main__':

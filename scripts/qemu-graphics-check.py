@@ -2,8 +2,8 @@
 """Test the real local logind/DRM seat on a disposable virtio VGA VM.
 
 The owner logs in on serial; a test-only root helper opens a separate PAM
-session on tty1. QMP is a private Unix socket, and the retained framebuffer is
-from that synthetic session. No physical hardware or input is qualified.
+session on tty1. QMP is a private Unix socket, and the retained framebuffers are
+from that synthetic session. Physical devices and mouse input remain unqualified.
 """
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ import re
 import signal
 import socket
 import sys
+import time
 
 SPEC = importlib.util.spec_from_file_location('int_graphics_desktop', Path(__file__).with_name('qemu-desktop-check.py'))
 desktop = importlib.util.module_from_spec(SPEC)
@@ -51,7 +52,7 @@ def inspect_frame(path: Path) -> dict:
             'width': width, 'height': height}
 
 
-def capture(qmp: Path, frame: Path) -> dict:
+def qmp_execute(qmp: Path, requests: list[dict]) -> None:
     """Use QEMU's local QMP protocol; never expose a TCP control port."""
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
         connection.settimeout(10)
@@ -65,8 +66,7 @@ def capture(qmp: Path, frame: Path) -> dict:
                 return json.loads(raw)
             if 'QMP' not in read_message():
                 raise ValueError('invalid QMP greeting')
-            for request in ({'execute': 'qmp_capabilities'},
-                            {'execute': 'screendump', 'arguments': {'filename': str(frame)}}):
+            for request in [{'execute': 'qmp_capabilities'}, *requests]:
                 stream.write((json.dumps(request) + '\n').encode())
                 while True:
                     reply = read_message()
@@ -74,26 +74,71 @@ def capture(qmp: Path, frame: Path) -> dict:
                         raise ValueError('QMP request rejected')
                     if 'return' in reply:
                         break
+                # Separate input reports so the guest receives real key transitions.
+                if request['execute'] == 'input-send-event':
+                    time.sleep(0.05)
         finally:
             stream.close()
+
+
+def capture(qmp: Path, frame: Path) -> dict:
+    qmp_execute(qmp, [{'execute': 'screendump', 'arguments': {'filename': str(frame)}}])
     return inspect_frame(frame)
 
 
-def analyze(serial: str, process: dict, frame: Path) -> dict:
+def shortcut(qmp: Path, key: str) -> None:
+    if key not in ('ret', 'd'):
+        raise ValueError('unsupported test key')
+    transitions = [('meta_l', True), (key, True), (key, False), ('meta_l', False)]
+    requests = [{'execute': 'input-send-event', 'arguments': {'events': [
+        {'type': 'key', 'data': {'down': down, 'key': {'type': 'qcode', 'data': name}}}]}}
+        for name, down in transitions]
+    qmp_execute(qmp, requests)
+
+
+def select_terminal(qmp: Path) -> None:
+    # Filter the launcher by its installed Foot desktop entry, then select it.
+    requests = [{'execute': 'input-send-event', 'arguments': {'events': [
+        {'type': 'key', 'data': {'down': down, 'key': {'type': 'qcode', 'data': name}}}]}}
+        for name in ('f', 'o', 'o', 't', 'ret') for down in (True, False)]
+    qmp_execute(qmp, requests)
+
+
+def frame_difference(before: Path, after: Path) -> int:
+    left, right = before.read_bytes(), after.read_bytes()
+    head = rb'\AP6\s+(\d{1,5})\s+(\d{1,5})\s+255\s'
+    lm, rm = re.match(head, left[:256]), re.match(head, right[:256])
+    if not lm or not rm or lm.groups() != rm.groups():
+        raise ValueError('incompatible framebuffer dimensions')
+    left, right = left[lm.end():], right[rm.end():]
+    if len(left) != len(right):
+        raise ValueError('incompatible framebuffer size')
+    return sum(a != b for a, b in zip(left, right))
+
+
+def analyze(serial: str, process: dict, frame: Path, launcher: Path) -> dict:
     result = desktop.analyze_log(serial, process)
     lines = serial.replace('\r\n', '\n').replace('\r', '\n').splitlines()
-    required = ('INT_DESKTOP_USER_PASS', 'INT_GRAPHICS_READY', 'INT_GRAPHICS_EXIT_PASS', 'INT_CORE_ROOT_PASS')
+    required = ('INT_DESKTOP_USER_PASS', 'INT_GRAPHICS_KEYBOARD_READY', 'INT_GRAPHICS_LAUNCHER_READY',
+                'INT_GRAPHICS_LAUNCHER_VISIBLE', 'INT_GRAPHICS_SELECTION_PASS',
+                'INT_GRAPHICS_EXIT_PASS', 'INT_CORE_ROOT_PASS')
     positions = [[i for i, line in enumerate(lines) if line == marker] for marker in required]
     ordered = all(len(found) == 1 for found in positions) and [p[0] for p in positions] == sorted(p[0] for p in positions)
-    ok = bool(ordered and process.get('graphics_frame'))
+    ok = bool(ordered and process.get('graphics_frame') and process.get('launcher_frame'))
     if ok:
         try:
-            ok = inspect_frame(frame) == process['graphics_frame']
+            initial, opened = inspect_frame(frame), inspect_frame(launcher)
+            changed = frame_difference(frame, launcher)
+            ok = (initial == process['graphics_frame'] and opened == process['launcher_frame']
+                  and initial['width'] == opened['width'] and initial['height'] == opened['height']
+                  and changed == process.get('launcher_changed_bytes')
+                  and changed >= max(1, initial['width'] * initial['height'] // 100))
         except (OSError, ValueError):
             ok = False
     result['checks']['graphics'] = ok
+    result['checks']['keyboard-and-launcher'] = ok
     if not ok:
-        result['failure_reasons'].append('missing ordered graphical session, clean exit, or verified framebuffer')
+        result['failure_reasons'].append('missing ordered graphics, keyboard/launcher checks, clean exit, or verified framebuffers')
     result['passed'] = not result['failure_reasons']
     return result
 
@@ -106,21 +151,31 @@ def run_graphics(deploy: Path, evidence: Path, timeout: float) -> tuple[int, Pat
             raise ValueError('QMP socket path is too long')
         state['qmp'] = qmp
         state['frame'] = run / 'graphics.ppm'
-        return command + ['-vga', 'virtio', '-qmp', f"unix:{str(qmp).replace(',', ',,')},server=on,wait=off"]
+        state['launcher'] = run / 'launcher.ppm'
+        return command + ['-vga', 'virtio', '-device', 'virtio-keyboard-pci',
+                          '-qmp', f"unix:{str(qmp).replace(',', ',,')},server=on,wait=off"]
     def on_root(_child, expect, outcome):
-        expect(r'(?m)(?:^|[\r\n])INT_GRAPHICS_READY\r*(?:\n|$)', 'local graphical console')
+        expect(r'(?m)(?:^|[\r\n])INT_GRAPHICS_KEYBOARD_READY\r*(?:\n|$)', 'virtual keyboard')
         try:
+            shortcut(state['qmp'], 'ret')
+            expect(r'(?m)(?:^|[\r\n])INT_GRAPHICS_LAUNCHER_READY\r*(?:\n|$)', 'terminal keyboard shortcut')
             outcome['graphics_frame'] = capture(state['qmp'], state['frame'])
+            shortcut(state['qmp'], 'd')
+            expect(r'(?m)(?:^|[\r\n])INT_GRAPHICS_LAUNCHER_VISIBLE\r*(?:\n|$)', 'launcher keyboard shortcut')
+            outcome['launcher_frame'] = capture(state['qmp'], state['launcher'])
+            outcome['launcher_changed_bytes'] = frame_difference(state['frame'], state['launcher'])
+            select_terminal(state['qmp'])
+            expect(r'(?m)(?:^|[\r\n])INT_GRAPHICS_SELECTION_PASS\r*(?:\n|$)', 'launcher selection')
         except (OSError, ValueError, KeyError, json.JSONDecodeError):
             raise core.ProtocolError('graphical framebuffer capture failed') from None
     def analyzer(serial, process):
-        return analyze(serial, process, state['frame'])
+        return analyze(serial, process, state['frame'], state['launcher'])
     return core.run_core(
         deploy, evidence, timeout, on_owner=desktop.owner_checks, on_root=on_root,
         root_helper='/usr/libexec/int-graphics-root-check', command_transform=transform,
         analyzer=analyzer, context={'graphics_runner_sha256': core.smoke.sha256(Path(__file__).resolve()),
-        'scope': 'local tty1, PAM/logind, virtio VGA, Sway Pixman, owner terminal and framebuffer',
-        'unqualified': 'physical hardware, keyboard/mouse interaction, GPU acceleration and performance'})
+        'scope': 'local tty1, PAM/logind, virtio VGA/keyboard, Sway Pixman, terminal, launcher selection and framebuffer',
+        'unqualified': 'physical hardware, mouse interaction, GPU acceleration and performance'})
 
 
 def main():

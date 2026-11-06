@@ -36,6 +36,7 @@ The status bar updates its clock every thirty seconds and ends its sleep child
 when the bar closes; it adds no detached monitoring service.
 
 This layer's build, headless session and virtual DRM/logind graphical seat pass
-the recorded QEMU tests. Those results do not qualify keyboard/mouse, launcher
-interaction, physical GPU rendering or performance.
+the recorded QEMU tests. A virtual keyboard also opens the terminal, opens the
+launcher and selects an application. Those results do not qualify physical input,
+mouse interaction, physical GPU rendering or performance.
 Use the dated validation records for actual outcomes rather than this description.

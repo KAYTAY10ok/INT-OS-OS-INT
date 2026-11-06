@@ -31,17 +31,42 @@ for attempt in $(seq 1 30); do
 done
 [ -n "$sock" ] || fail missing-sway-socket
 jq -e '[.[] | select(.active == true and (.name | startswith("HEADLESS-") | not))] | length > 0' /run/int-graphics-outputs.json >/dev/null || fail missing-drm-output
-sudo -u intowner swaymsg -s "$sock" 'exec foot --config=/etc/int/foot.ini --app-id=int-graphics-terminal' > /run/int-graphics-exec.json || fail start-terminal
-jq -e 'all(.[]; .success == true)' /run/int-graphics-exec.json >/dev/null || fail terminal-command
 for attempt in $(seq 1 30); do
-    sudo -u intowner swaymsg -s "$sock" -t get_tree > /run/int-graphics-tree.json 2>/dev/null || fail window-tree
-    if jq -e '[.. | objects | select(.app_id? == "int-graphics-terminal" and .rect.width > 0 and .rect.height > 0)] | length == 1' /run/int-graphics-tree.json >/dev/null; then break; fi
+    sudo -u intowner swaymsg -s "$sock" -t get_inputs > /run/int-graphics-inputs.json 2>/dev/null || fail input-list
+    jq -e '[.[] | select(.type == "keyboard")] | length > 0' /run/int-graphics-inputs.json >/dev/null && break
     sleep 1
 done
-pid=$(jq -r '[.. | objects | select(.app_id? == "int-graphics-terminal") | .pid][0] // empty' /run/int-graphics-tree.json)
+jq -e '[.[] | select(.type == "keyboard")] | length > 0' /run/int-graphics-inputs.json >/dev/null || fail missing-keyboard
+echo 'INT_GRAPHICS_KEYBOARD_READY'
+for attempt in $(seq 1 30); do
+    sudo -u intowner swaymsg -s "$sock" -t get_tree > /run/int-graphics-tree.json 2>/dev/null || fail window-tree
+    if jq -e '[.. | objects | select(.app_id? == "int-terminal" and .rect.width > 0 and .rect.height > 0)] | length == 1' /run/int-graphics-tree.json >/dev/null; then break; fi
+    sleep 1
+done
+pid=$(jq -r '[.. | objects | select(.app_id? == "int-terminal") | .pid][0] // empty' /run/int-graphics-tree.json)
 [ -n "$pid" ] && [ "$(awk '/^Uid:/ {print $2}' "/proc/$pid/status")" = 1000 ] || fail terminal-owner
-echo 'INT_GRAPHICS_READY'
-sleep 2
+echo 'INT_GRAPHICS_LAUNCHER_READY'
+found=0
+for attempt in $(seq 1 30); do
+    for launcher in $(pidof fuzzel || true); do
+        [ "$(awk '/^Uid:/ {print $2}' "/proc/$launcher/status" 2>/dev/null)" = 1000 ] && found=1
+    done
+    [ "$found" -eq 1 ] && break
+    sleep 1
+done
+[ "$found" -eq 1 ] || fail launcher-not-running
+# Give the compositor a frame to render the layer-shell launcher.
+sleep 1
+echo 'INT_GRAPHICS_LAUNCHER_VISIBLE'
+selected=''
+for attempt in $(seq 1 30); do
+    sudo -u intowner swaymsg -s "$sock" -t get_tree > /run/int-graphics-tree.json 2>/dev/null || fail selection-tree
+    selected=$(jq -r '[.. | objects | select(.app_id? == "foot" and .rect.width > 0 and .rect.height > 0) | .pid][0] // empty' /run/int-graphics-tree.json)
+    [ -n "$selected" ] && break
+    sleep 1
+done
+[ -n "$selected" ] && [ "$(awk '/^Uid:/ {print $2}' "/proc/$selected/status")" = 1000 ] || fail launcher-selection
+echo 'INT_GRAPHICS_SELECTION_PASS'
 sudo -u intowner swaymsg -s "$sock" exit >/dev/null 2>&1 || true
 for attempt in $(seq 1 20); do
     [ "$(systemctl show -p SubState --value "$unit")" = exited ] && break

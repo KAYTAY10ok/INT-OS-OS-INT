@@ -26,6 +26,10 @@ software-rendered output, a user-owned terminal and clean session exit. A screen
 capture and exact test inputs are retained; physical GPU and input qualification
 remain open. See `docs/development/validation-graphics-2026-11-06.md`.
 
+The later virtual-keyboard run additionally verifies opening a terminal, opening
+the launcher and selecting an application. Physical input and mouse tests remain
+open; the host suite passes 75 tests.
+
 No release has been published. There are no supported ISOs, signed feeds,
 installer, desktop, validated hardware list or security/performance guarantees.
 See `CLAUDE_HANDOFF.md` for actual build and boot results.

@@ -102,10 +102,10 @@ seat and Virtio VGA output:
 ./scripts/int --profile desktop graphics-check
 ```
 
-The latter records a framebuffer capture with a private local QMP socket; see the
-[graphics validation](docs/development/validation-graphics-2026-11-06.md).
-Neither test qualifies keyboard/mouse interaction, physical displays or GPU
-hardware, accelerated rendering, or resource targets. The production command
+The latter records framebuffer captures and sends virtual keyboard events through
+a private local QMP socket; see the [graphics validation](docs/development/validation-graphics-2026-11-06.md).
+Neither test qualifies physical keyboards/mice, displays or GPU hardware,
+accelerated rendering, or resource targets. The production command
 `start-int-desktop` requires an active local virtual console session.
 
 Images and manifests appear in

@@ -6,14 +6,20 @@ Code is required to build or test it.
 
 ## Desktop prototype — graphical VM verified, 2026-11-06
 
+The latest graphics run additionally passes Virtio keyboard shortcuts for the
+terminal and launcher, and selects Foot from the launcher to open a second
+owner terminal. It retains both framebuffer captures and passes 75 host tests.
+Evidence: `../int-linux-work/evidence/qemu-smoke-20261106T110314.911138Z-5225d290d241/`.
+See [graphics validation](docs/development/validation-graphics-2026-11-06.md).
+
 The separate `int-image-graphics-smoke` now passes a local tty1 PAM/logind,
 Virtio VGA DRM and Pixman Sway test with a mapped foot terminal owned by UID 1000.
 An actual 1280×800 framebuffer is retained as `graphics.ppm` alongside the
 known-good unprovisioned inputs. The host suite passes 74 tests. Details:
 [graphics validation](docs/development/validation-graphics-2026-11-06.md) and
 `../int-linux-work/evidence/qemu-smoke-20261106T104648.832223Z-1ef6afc521f7/`.
-The virtual terminal session was created by a test-only unit; keyboard/mouse,
-human tty login, physical GPU/monitor, acceleration and performance remain open.
+The virtual terminal session was created by a test-only unit; other key paths,
+mouse, human tty login, physical GPU/monitor, acceleration and performance remain open.
 
 The new `meta-int-desktop` layer and source pin for meta-wayland
 `2b97daa23e0e612a087ea54b150bd0b8e0ff9378` implement stable Sway 1.11 /

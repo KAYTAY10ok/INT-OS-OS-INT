@@ -45,6 +45,7 @@ The smoke image's restricted network check verifies a DHCP IPv4 address, link UP
 
 - [x] Build the shared desktop prototype and verify an unprivileged headless Sway session, Wayland protocols, a mapped terminal and clean exit in QEMU.
 - [x] Verify a local logind/DRM graphical seat, Virtio VGA output, owner terminal and clean exit in QEMU; retain a framebuffer capture.
+- [x] Verify virtual keyboard shortcuts for the terminal and launcher, including selecting and opening an application.
 - [ ] Integrate one lightweight Wayland/tiling foundation with terminal, launcher, notifications, status bar, and keyboard navigation.
 - [ ] Add original INT branding and configurable layouts informed by the supplied references.
 - [ ] Measure desktop overhead before adding a dashboard or custom shell component.

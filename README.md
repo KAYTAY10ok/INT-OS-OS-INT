@@ -10,9 +10,9 @@ sudo, packet filtering, network recovery and clean shutdown. See the
 artifacts, scope and limitations. The earlier [minimal foundation](docs/development/validation-2026-11-05.md)
 is independently preserved.
 The shared Sway desktop prototype also passes headless and Virtio VGA graphical
-VM tests with a real user-owned terminal. See the
+VM tests with a real user-owned terminal, keyboard shortcuts and launcher selection. See the
 [graphics validation record](docs/development/validation-graphics-2026-11-06.md).
-Keyboard/mouse interaction and physical display hardware remain unqualified.
+Physical keyboards, mice and display hardware remain unqualified.
 Installer, signed feeds, complete security profiles and release images remain
 future work in the [roadmap](ROADMAP.md).
 

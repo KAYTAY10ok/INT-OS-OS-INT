@@ -54,9 +54,10 @@ For the graphical console prototype, run:
 ```
 
 The additional test uses a local PAM/logind tty1 session, Virtio VGA, Sway's DRM
-backend and a real owner terminal. It validates and retains a framebuffer capture
-through a private Unix QMP socket. It does not qualify physical devices or
-keyboard/mouse interaction. See the [graphics record](docs/development/validation-graphics-2026-11-06.md).
+backend and a real owner terminal. It uses a virtual keyboard to open the terminal,
+open the launcher and select an application, and retains framebuffer captures
+through a private Unix QMP socket. It does not qualify physical devices or mouse
+interaction. See the [graphics record](docs/development/validation-graphics-2026-11-06.md).
 
 `scripts/check-kernel.py CONFIG --manifest IMAGE.manifest --require-veth` audits
 the merged core kernel configuration and module package presence. The official

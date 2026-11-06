@@ -1,8 +1,31 @@
 # Graphical console prototype validation — 2026-11-06 UTC
 
-The shared desktop now passes a graphical QEMU test using a local tty1 session,
-PAM/logind and the emulated Virtio VGA device. This is a virtual-machine
-milestone, not a physical-hardware, input-device or performance qualification.
+The shared desktop now passes graphical QEMU tests using a local tty1 session,
+PAM/logind, Virtio VGA and a virtual keyboard. This is a virtual-machine
+milestone, not a physical-hardware, mouse or performance qualification.
+
+## Virtual keyboard and launcher
+
+The later successful run is retained at
+`INT_WORKDIR/evidence/qemu-smoke-20261106T110314.911138Z-5225d290d241/`.
+All 15 check groups pass, with no credential echo or timeout and QEMU exit 0.
+It retains the exact unprovisioned inputs, serial output, result and known-good
+record. The host suite passed 75 tests. The 66.49-second complete run includes
+enrollment, firewall, authentication and desktop checks; it is not a benchmark.
+
+The test installs the virtio-input module in the disposable image and sends
+actual QMP keyboard events through the emulated Virtio keyboard. `Super+Return`
+opens a real foot terminal as the owner; `Super+D` opens fuzzel. The test types
+`foot`, presses Return and verifies that a second terminal window belongs to the
+owner. It validates and hashes two 1280×800 framebuffers and requires a visible
+change when the launcher opens. The [launcher preview](evidence/launcher-2026-11-06.png)
+is a lossless conversion of the retained capture, with SHA256
+`acfb681ba9752d7185004c634012483f9ff14efa0b3a2e71aa97846c402131ea`.
+The original `graphics.ppm` and `launcher.ppm` hashes are
+`c804f40561e95df0ce2783a567c8c033e07aa7ee6950216a93a26e858b0add58` and
+`44b147b00cfd8ebf472b671064773fa1d824ad513c7a27405d0d0bc8e71932d4`.
+Only the named virtual-keyboard paths and application selection were exercised;
+other shortcuts, physical keyboards and mice require further testing.
 
 ```sh
 ./scripts/int --profile desktop build int-image-graphics-smoke
@@ -44,8 +67,9 @@ its cleanup assertion because a completed transient unit was already unloaded.
 The reproducible test instead keeps the unit until it can verify a successful
 exit. The previous lab results remain under their own failed evidence directories.
 
-The terminal was opened through Sway IPC, not by a keyboard event. The tty1 PAM
-session was started by a test-only systemd unit, not by a human entering a password
+In this earlier run, the terminal was opened through Sway IPC; the later keyboard
+and launcher run above supersedes that limitation. The tty1 PAM session in both
+runs was started by a test-only systemd unit, not by a human entering a password
 on that console. Physical monitors, real graphics hardware, accelerated rendering,
-keyboard/mouse interaction, launcher selection, suspend and resource targets
-remain open. No release or environment publication is implied.
+physical keyboards/mice, suspend and resource targets remain open. No release or
+environment publication is implied.
