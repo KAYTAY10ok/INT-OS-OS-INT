@@ -58,8 +58,9 @@ The native toolchain, test key, output and manifest are all experimental.
 | `corrupt-rpm-indexed` | Corrupt signed version 2 with freshly indexed and correctly signed metadata |
 
 The task checks input RPM metadata for scriptlets, package and file triggers,
-and permits only the probe directory and a regular version file in the listed
-paths. It does not inspect the version file's payload. It checks generated
+and permits only `/usr`, `/usr/share`, the probe directory and a regular
+version file in the listed paths. It does not inspect the version file's
+payload. It checks generated
 primary indexes contain exactly the intended RPM and its SHA-256, verifies
 that the two stale-checksum variants fail at their intended checks, and checks
 selected signatures with the native tools. It does not
