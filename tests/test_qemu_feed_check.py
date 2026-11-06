@@ -24,6 +24,21 @@ class FeedProtocolTests(unittest.TestCase):
     def test_complete_ordered_protocol_passes(self):
         self.assertTrue(self.analyze(self.lines)['passed'])
 
+    def test_unsigned_protocol_requires_every_ordered_assertion(self):
+        negative = list(feed.CASE_MARKERS['unsigned-rpm']) + ['[ 123.4] reboot: Power down']
+        def check(lines):
+            return feed.analyze_log('\r\n'.join(lines) + '\r\n', self.process, 'unsigned-rpm')['passed']
+        self.assertTrue(check(negative))
+        for index in range(len(negative)):
+            with self.subTest(missing=negative[index]):
+                self.assertFalse(check(negative[:index] + negative[index + 1:]))
+        self.assertFalse(check(negative + [negative[2]]))
+        self.assertFalse(check([negative[1], negative[0], *negative[2:]]))
+        self.assertFalse(check(negative + ['INT_FEED_CASE:success:PASS']))
+        self.assertFalse(feed.analyze_log('\n'.join(negative), self.process, 'success')['passed'])
+        with self.assertRaises(ValueError):
+            feed.analyze_log('', self.process, 'unknown')
+
     def test_missing_duplicate_reordered_unknown_failures_and_panics_reject(self):
         cases = [self.lines[1:], self.lines + [self.lines[0]],
                  [self.lines[1], self.lines[0], *self.lines[2:]],
@@ -48,6 +63,10 @@ class FeedProtocolTests(unittest.TestCase):
         append = command[command.index('-append') + 1]
         self.assertIn('int_feed_fingerprint=' + 'A' * 40, append)
         self.assertIn('int_feed_case=success', append)
+        negative = feed.build_qemu_command('qemu', artifacts, 'A' * 40, 'unsigned-rpm')
+        self.assertIn('int_feed_case=unsigned-rpm', negative[negative.index('-append') + 1])
+        with self.assertRaises(ValueError):
+            feed.build_qemu_command('qemu', artifacts, 'A' * 40, 'unsigned-rpm kernel_init=foo')
         with self.assertRaises(ValueError):
             feed.build_qemu_command('qemu', artifacts, 'A' * 39 + ' ')
 

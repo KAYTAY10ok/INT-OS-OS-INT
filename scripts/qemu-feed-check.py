@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Run the experimental positive DNF feed scenario in an isolated QEMU VM.
+"""Run an experimental DNF feed scenario in an isolated QEMU VM.
 
 Only an independently pinned test key and fixture-disk hash are accepted.
-This test does not qualify negative cases, network updates or physical hardware.
+Only the explicitly selected scenario is tested; network updates and physical
+hardware remain outside the scope.
 """
 from __future__ import annotations
 
@@ -38,6 +39,19 @@ MARKERS = (
     "INT_FEED_CASE:success:PASS",
     "INT_FEED_SHUTDOWN",
 )
+CASE_MARKERS = {
+    "success": MARKERS,
+    "unsigned-rpm": (
+        "INT_FEED_CHECK:pin:PASS",
+        "INT_FEED_CHECK:install-v1:PASS",
+        "INT_FEED_CHECK:unsigned-metadata:PASS",
+        "INT_FEED_CHECK:unsigned-rpmkeys:PASS",
+        "INT_FEED_CHECK:unsigned-dnf-rejected:PASS",
+        "INT_FEED_CHECK:unchanged-v1:PASS",
+        "INT_FEED_CASE:unsigned-rpm:PASS",
+        "INT_FEED_SHUTDOWN",
+    ),
+}
 REQUIRED_PACKAGES = frozenset({"int-feed-smoke", "dnf", "rpm", "gnupg", "gnupg-gpg"})
 
 
@@ -66,9 +80,12 @@ def snapshot_disk(path: Path, artifacts: Path, expected: str) -> dict:
             "bytes": target.stat().st_size, "sha256": expected}
 
 
-def build_qemu_command(executable: str, artifacts: dict, fingerprint: str) -> list[str]:
+def build_qemu_command(executable: str, artifacts: dict, fingerprint: str,
+                       test_case: str = "success") -> list[str]:
     if not FINGERPRINT.fullmatch(fingerprint):
         raise ValueError("expected test-key fingerprint must be 40 uppercase hexadecimal characters")
+    if test_case not in CASE_MARKERS:
+        raise ValueError("unknown feed test case")
     root = artifacts["rootfs"]["snapshot"].replace(",", ",,")
     disk = artifacts["feed_disk"]["snapshot"].replace(",", ",,")
     return [executable, "-nodefaults", "-no-user-config", "-machine", "q35",
@@ -76,7 +93,7 @@ def build_qemu_command(executable: str, artifacts: dict, fingerprint: str) -> li
             "-display", "none", "-serial", "stdio", "-monitor", "none", "-no-reboot",
             "-kernel", artifacts["kernel"]["snapshot"],
             "-append", ("root=/dev/vda rw rootwait console=ttyS0,115200n8 panic=1 "
-                        f"int_feed_fingerprint={fingerprint} int_feed_case=success"),
+                        f"int_feed_fingerprint={fingerprint} int_feed_case={test_case}"),
             "-drive", f"file={root},format=raw,if=virtio,snapshot=on",
             "-drive", f"file={disk},format=raw,if=virtio,readonly=on", "-nic", "none"]
 
@@ -127,9 +144,12 @@ def execute_qemu(command: list[str], log_path: Path, timeout: float) -> dict:
     return outcome
 
 
-def analyze_log(serial: str, process: dict) -> dict:
+def analyze_log(serial: str, process: dict, test_case: str = "success") -> dict:
+    if test_case not in CASE_MARKERS:
+        raise ValueError("unknown feed test case")
+    markers = CASE_MARKERS[test_case]
     lines = serial.replace("\r\n", "\n").replace("\r", "\n").splitlines()
-    positions = {marker: [i for i, line in enumerate(lines) if line == marker] for marker in MARKERS}
+    positions = {marker: [i for i, line in enumerate(lines) if line == marker] for marker in markers}
     shutdown = [i for i, line in enumerate(lines)
                 if re.fullmatch(r"(?:\[\s*[0-9.]+\]\s*)?reboot: Power down", line)]
     reasons = []
@@ -143,10 +163,10 @@ def analyze_log(serial: str, process: dict) -> dict:
     if any(len(pos) != 1 for pos in positions.values()) or len(shutdown) != 1:
         reasons.append("missing or duplicate feed assertions or poweroff")
     else:
-        ordered = [positions[marker][0] for marker in MARKERS] + shutdown
+        ordered = [positions[marker][0] for marker in markers] + shutdown
         if ordered != sorted(ordered) or len(set(ordered)) != len(ordered):
             reasons.append("feed assertions or poweroff out of order")
-    unknown = [line for line in lines if line.startswith("INT_FEED_") and line not in MARKERS]
+    unknown = [line for line in lines if line.startswith("INT_FEED_") and line not in markers]
     if unknown:
         reasons.append("unexpected feed protocol marker")
     return {"passed": not reasons, "failure_reasons": reasons,
@@ -170,13 +190,15 @@ def artifact_failures(artifacts: dict) -> list[str]:
 
 
 def run_feed(deploy: Path, disk: Path, expected_disk_sha256: str, fingerprint: str,
-             evidence_root: Path, timeout: float) -> tuple[int, Path]:
-    if not FINGERPRINT.fullmatch(fingerprint) or not SHA256.fullmatch(expected_disk_sha256):
+             evidence_root: Path, timeout: float, test_case: str = "success") -> tuple[int, Path]:
+    if (not FINGERPRINT.fullmatch(fingerprint) or not SHA256.fullmatch(expected_disk_sha256)
+            or test_case not in CASE_MARKERS):
         raise ValueError("invalid independent fingerprint or disk SHA-256")
     run = smoke.create_run_directory(evidence_root)
     started = time.monotonic()
     result = {"schema_version": 1, "status": "running", "started_at_utc": smoke.utc_now(),
-              "scope": "positive local DNF VM scenario only; negative cases and network not tested",
+              "scope": f"local DNF VM scenario {test_case} only; other cases and network not tested",
+              "case": test_case,
               "expected_test_key_fingerprint": fingerprint,
               "expected_fixture_sha256": expected_disk_sha256, "timeout_seconds": timeout,
               "runner_sha256": smoke.sha256(Path(__file__).resolve()),
@@ -193,11 +215,12 @@ def run_feed(deploy: Path, disk: Path, expected_disk_sha256: str, fingerprint: s
         result["artifacts"] = smoke.snapshot_inputs(deploy, run)
         validate_feed_manifest(Path(result["artifacts"]["manifest"]["snapshot"]))
         result["artifacts"]["feed_disk"] = snapshot_disk(disk, run / "artifacts", expected_disk_sha256)
-        command = build_qemu_command(executable, result["artifacts"], fingerprint)
+        command = build_qemu_command(executable, result["artifacts"], fingerprint, test_case)
         result["command"] = command
         smoke.write_json(run / "result.json", result)
         result["process"] = execute_qemu(command, run / "serial.log", timeout)
-        analysis = analyze_log((run / "serial.log").read_text(encoding="utf-8", errors="replace"), result["process"])
+        analysis = analyze_log((run / "serial.log").read_text(encoding="utf-8", errors="replace"),
+                               result["process"], test_case)
         result.update(analysis)
         result["failure_reasons"].extend(artifact_failures(result["artifacts"]))
         if not result["failure_reasons"] and result["passed"]:
@@ -230,6 +253,7 @@ def main() -> int:
     parser.add_argument("evidence_directory", type=Path)
     parser.add_argument("--fingerprint", required=True, help="independently pinned 40-character uppercase test-key fingerprint")
     parser.add_argument("--disk-sha256", required=True, help="independently recorded lowercase fixture disk SHA-256")
+    parser.add_argument("--case", choices=tuple(CASE_MARKERS), default="success")
     parser.add_argument("--timeout", type=float, default=900.0)
     args = parser.parse_args()
     if not FINGERPRINT.fullmatch(args.fingerprint) or not SHA256.fullmatch(args.disk_sha256):
@@ -242,7 +266,7 @@ def main() -> int:
     previous = signal.signal(signal.SIGTERM, request_stop)
     try:
         code, _ = run_feed(args.deploy_directory, args.fixture_disk, args.disk_sha256,
-                           args.fingerprint, args.evidence_directory, args.timeout)
+                           args.fingerprint, args.evidence_directory, args.timeout, args.case)
         return code
     except (OSError, ValueError) as error:
         print(f"feed runner error: {error}", file=sys.stderr)

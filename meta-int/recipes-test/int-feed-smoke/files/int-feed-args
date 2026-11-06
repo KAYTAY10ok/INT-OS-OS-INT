@@ -1,6 +1,9 @@
 #!/bin/sh
 # Emit the independently supplied test fingerprint after strict cmdline checks.
 set -eu
+test "$#" -ge 1 && test "$#" -le 2
+mode=${2:-fingerprint}
+case "$mode" in fingerprint|--case) ;; *) exit 1 ;; esac
 fingerprint=
 test_case=
 fingerprint_seen=0
@@ -20,6 +23,10 @@ for token in $(cat "$1"); do
             ;;
     esac
 done
-test "$test_case" = success
+case "$test_case" in success|unsigned-rpm) ;; *) exit 1 ;; esac
 printf '%s\n' "$fingerprint" | grep -Eq '^[0-9A-F]{40}$'
-printf '%s\n' "$fingerprint"
+if test "$mode" = --case; then
+    printf '%s\n' "$test_case"
+else
+    printf '%s\n' "$fingerprint"
+fi

@@ -2,6 +2,7 @@
 # Test-only local-feed guest. The host supplies the trusted fingerprint on the
 # kernel command line and a separate read-only fixture disk on /dev/vdb.
 set -eu
+export LC_ALL=C
 result=FAIL
 finish() {
     if test "$result" != PASS; then
@@ -14,6 +15,7 @@ finish() {
 trap finish EXIT
 
 fingerprint=$(/usr/libexec/int-feed-args /proc/cmdline)
+test_case=$(/usr/libexec/int-feed-args /proc/cmdline --case)
 work=/run/int-feed-smoke
 mkdir -m 0700 "$work"
 mkdir -m 0700 "$work/home" "$work/repos" "$work/cache" "$work/persist" "$work/mount"
@@ -25,6 +27,16 @@ while test ! -b /dev/vdb; do
     test "$attempt" -lt 30
     sleep 1
 done
+cat > "$work/repos/intfeed-unsigned.repo" <<EOF
+[intfeed-unsigned]
+name=INT disposable unsigned package feed
+baseurl=file://$work/mount/unsigned-rpm
+enabled=0
+gpgkey=file://$work/trusted.asc
+gpgcheck=1
+repo_gpgcheck=1
+skip_if_unavailable=0
+EOF
 test "$(cat /sys/block/vdb/ro)" = 1
 mount -t ext4 -o ro,nosuid,nodev,noexec /dev/vdb "$work/mount"
 key="$work/mount/trusted-public-key.asc"
@@ -79,6 +91,48 @@ dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-v1 --refresh make
 dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-v1 install int-feed-probe-1.0
 check_version 1.0
 echo 'INT_FEED_CHECK:install-v1:PASS'
+if test "$test_case" = unsigned-rpm; then
+    # Validate the signed metadata and make sure it advertises exactly the
+    # intended version before trying a transaction. A missing package, stale
+    # metadata or unrelated DNF error must never count as signature rejection.
+    dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-unsigned --refresh makecache
+    candidate=$(dnf -q -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-unsigned \
+        repoquery --available --qf '%{name} %{version} %{release}' int-feed-probe)
+    test "$candidate" = 'int-feed-probe 2.0 r0'
+    echo 'INT_FEED_CHECK:unsigned-metadata:PASS'
+
+    package="$work/mount/unsigned-rpm/int-feed-probe-2.0-r0.noarch.rpm"
+    if rpmkeys --define '_pkgverify_level all' --checksig --verbose "$package" > "$work/rpmkeys.log" 2>&1; then
+        echo 'Unsigned package unexpectedly passed strict RPM verification' >&2
+        exit 1
+    fi
+    cat "$work/rpmkeys.log"
+    grep -Eiq 'signature.*:[[:space:]]*NOTFOUND[[:space:]]*$' "$work/rpmkeys.log"
+    grep -Eiq 'digest.*:[[:space:]]*OK[[:space:]]*$' "$work/rpmkeys.log"
+    if grep -Eiq 'signature.*:[[:space:]]*OK[[:space:]]*$' "$work/rpmkeys.log"; then
+        echo 'Unexpected successful signature on unsigned package' >&2
+        exit 1
+    fi
+    echo 'INT_FEED_CHECK:unsigned-rpmkeys:PASS'
+
+    if dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-unsigned \
+        upgrade int-feed-probe > "$work/unsigned-dnf.log" 2>&1; then
+        echo 'DNF unexpectedly accepted unsigned upgrade' >&2
+        exit 1
+    else
+        dnf_status=$?
+    fi
+    cat "$work/unsigned-dnf.log"
+    test "$dnf_status" -ne 0
+    grep -Fq 'Package int-feed-probe-2.0-r0.noarch.rpm is not signed' "$work/unsigned-dnf.log"
+    grep -Fq 'GPG check FAILED' "$work/unsigned-dnf.log"
+    echo 'INT_FEED_CHECK:unsigned-dnf-rejected:PASS'
+    check_version 1.0
+    echo 'INT_FEED_CHECK:unchanged-v1:PASS'
+    echo 'INT_FEED_CASE:unsigned-rpm:PASS'
+    result=PASS
+    exit 0
+fi
 dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-v2 --refresh makecache
 dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-v2 upgrade int-feed-probe
 check_version 2.0
