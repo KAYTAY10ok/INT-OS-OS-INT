@@ -70,6 +70,10 @@ def main():
     # creates it mode 0700; both unprotected secret keys disappear on exit.
     with tempfile.TemporaryDirectory(prefix="int-feed-lab-", dir="/tmp") as temporary:
         root = Path(temporary)
+        # Avoid inheriting a developer's GnuPG home or RPM user macros.
+        env["HOME"] = str(root)
+        env.pop("GNUPGHOME", None)
+        env.pop("XDG_CONFIG_HOME", None)
         try:
             def gpg(home, *arguments, ok=True):
                 return invoke([tools["gpg"], "--no-options", "--homedir", home,
