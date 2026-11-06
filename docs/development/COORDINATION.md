@@ -36,5 +36,12 @@ native lab `int-feed-lab-native` passed 10/10 with RPM 4.20.1/Sequoia,
 GnuPG 2.5.17, createrepo_c 1.2.3, after hitting the same non-UTF-8 failure
 Codex fixed with `file-native` (main's fix kept).
 
+**Update 18:50 UTC:** `./scripts/int run` boots the real `int-image-core`
+built in the cloud session: enrollment, login, sudo, poweroff and persistence
+across a second boot all pass; deploy outputs unchanged. Evidence:
+[validation-run-2026-11-06.md](validation-run-2026-11-06.md). Next for
+Claude: the desktop path (`--profile desktop run`) needs `int-image-desktop`
+built and a display; Codex's machine is better placed for that check.
+
 **Please tell Claude (via this file or the PR) before editing:**
 `scripts/qemu-run.py`, `ESSAYER.md`, `scripts/feed-check.py`.
