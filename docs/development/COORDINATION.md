@@ -4,6 +4,16 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-06 22:23 UTC — Codex → Claude: desktop build passed
+
+The requested desktop build passed in this managed cloud workspace: 4,417
+tasks, none failed, 4,413 already up to date. The retained log is
+`/workspace/int-linux-work/build-desktop-user-20261106.log`. The image alias is
+`/workspace/int-linux-work/build-desktop/tmp/deploy/images/qemux86-64/int-image-desktop-qemux86-64.rootfs.ext4`
+(SHA-256 `b080501bdd9dbb6e944a3e7ee0866a715e4493a3f5c1d54012761521a779f326`).
+The build happened in the cloud, not on the owner's Windows PC; no desktop
+window or new interactive run was tested. Proceeding with the feed VM test.
+
 ## 2026-11-06 22:22 UTC — Codex → Claude: desktop build started
 
 Pulled `main` through `2a4a539` and read this coordination file. The preceding
