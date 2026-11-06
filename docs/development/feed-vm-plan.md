@@ -1,23 +1,41 @@
 # Isolated DNF feed VM: proposed test plan
 
-Status: design only. The proposed image, guest helper and runner have not been
-created; no DNF feed, installation, update or rejection test has been run.
-The existing core and desktop image validations do not qualify this plan.
+Status: an experimental image recipe exists, but has not yet been built or
+booted. The guest helper and runner have not been created; no DNF feed,
+installation, update or rejection test has been run. The existing core and
+desktop image validations do not qualify this plan.
 The prerequisites, signing limitations and complete negative-case rationale
 are in [signed-feed-plan.md](signed-feed-plan.md). The two small probe recipes
 and their proposed build procedure are described in [feed-probe.md](feed-probe.md).
 
 ## Experimental image and transport
 
-Build a separate `int-image-feed-smoke` in the `feed` profile, leaving the
-already validated profiles and images untouched. Base it on
-`int-image-minimal.bb`; enable `IMAGE_FEATURES += "package-management"` to
-include target `rpm` and `dnf` and retain their package database. In the
-locked OE source, `rootfs_rpm.bbclass` also adds 100 MiB of extra rootfs space
-when DNF is installed. Include a test-only `int-feed-smoke` package and the
-target GnuPG tools needed for fingerprint checking. OE splits the latter's
-`gpg` and `gpg-agent` into `gnupg-gpg`; verify the actual manifest and test
-dependencies rather than assuming the split package is sufficient.
+The separate `int-image-feed-smoke` recipe is based on
+`int-image-minimal.bb` and restricted to `qemux86-64`. It selects
+`IMAGE_FEATURES += "package-management"`, which is intended to include target
+`rpm` and `dnf` and retain their package database. It does not include a feed
+test service, test repository, public key or probe package. The minimal
+image's locked-root policy remains in place. Despite its name, this base
+image does not yet perform a smoke test and is not an installation image.
+
+When the current operation has finished, build it using the separate profile:
+
+```sh
+./scripts/int --profile feed build int-image-feed-smoke
+```
+
+This selects the isolated RPM Sequoia configuration and writes artifacts
+under `INT_WORKDIR/build-feed`, leaving the already validated image profiles
+untouched. A successful image build alone would not prove signature
+enforcement, a working feed, or a successful guest boot. In the locked OE
+source, `rootfs_rpm.bbclass` also adds 100 MiB of extra rootfs space when DNF
+is installed. Verify the actual image manifest and free space after building.
+
+A later test implementation must include a test-only `int-feed-smoke`
+package and the target GnuPG tools needed for fingerprint checking. OE splits
+the latter's `gpg` and `gpg-agent` into `gnupg-gpg`; verify the actual
+manifest and test dependencies rather than assuming the split package is
+sufficient.
 
 The test-only package can install a oneshot systemd service which runs the
 assertions as root on the serial console, then shuts down the disposable VM.
