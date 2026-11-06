@@ -1,7 +1,7 @@
 SUMMARY = "Isolated RPM and repository signature laboratory"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
-SRC_URI = "file://int-feed-lab.py"
+SRC_URI = "file://int-feed-lab.py file://int-feed-fixtures.py"
 S = "${UNPACKDIR}"
 
 inherit native python3native
@@ -22,3 +22,14 @@ do_compile() {
 do_install() {
     :
 }
+
+# Explicit, opt-in task: caller supplies copied inputs and a new output name
+# through a post-read configuration file. This does not run during do_build.
+export INT_FEED_V1
+export INT_FEED_V2
+export INT_FEED_OUTPUT
+do_create_feed_fixtures[nostamp] = "1"
+do_create_feed_fixtures() {
+    ${PYTHON} ${S}/int-feed-fixtures.py --bindir ${STAGING_BINDIR_NATIVE}
+}
+addtask create_feed_fixtures after do_unpack do_prepare_recipe_sysroot
