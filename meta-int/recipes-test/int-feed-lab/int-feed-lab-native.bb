@@ -4,15 +4,15 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 SRC_URI = "file://int-feed-lab.py"
 S = "${UNPACKDIR}"
 
-inherit native
+inherit native python3native
 
-DEPENDS = "rpm-native gnupg-native createrepo-c-native python3-native"
+DEPENDS = "rpm-native gnupg-native createrepo-c-native"
 
 # This is a test, not a distributable signing service. A fresh temporary key
 # and fixture are created for every invocation and deleted after the test.
 do_compile[nostamp] = "1"
 do_compile() {
-    ${STAGING_BINDIR_NATIVE}/python3 ${S}/int-feed-lab.py \
+    ${PYTHON} ${S}/int-feed-lab.py \
         --bindir ${STAGING_BINDIR_NATIVE} > ${T}/feed-lab-output.txt
     # Replay the report to the BitBake console so callers can retain it even
     # when rm_work later removes the recipe's temporary task log.
