@@ -47,6 +47,16 @@ def signature_ok(output):
                for line in output.splitlines())
 
 
+def has_status(output, status, first_argument=None):
+    """Match a GnuPG machine-status record, never free-form diagnostics."""
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) >= 2 and fields[:2] == ["[GNUPG:]", status]:
+            if first_argument is None or (len(fields) >= 3 and fields[2] == first_argument):
+                return True
+    return False
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bindir", type=Path, required=True,
@@ -192,18 +202,24 @@ printf 'laboratory fixture\\n' > %{buildroot}/usr/share/int-feed-lab/probe
 
             verified = verify(verify_home, signature, metadata)
             valid = f"[GNUPG:] VALIDSIG {fingerprint} "
+            key_id = fingerprint[-16:]
             record("metadata_signed_trusted", verified.returncode == 0 and valid in verified.stdout,
                    verified.stdout, verified.returncode)
             checked = verify(wrong_home, signature, metadata)
-            record("metadata_wrong_key", checked.returncode != 0 and valid not in checked.stdout,
+            record("metadata_wrong_key", checked.returncode != 0 and valid not in checked.stdout and
+                   has_status(checked.stdout, "NO_PUBKEY", key_id),
                    checked.stdout, checked.returncode)
             altered = root / "repomd-altered.xml"
             altered.write_bytes(metadata.read_bytes() + b"\n")
             checked = verify(verify_home, signature, altered)
-            record("metadata_modified", checked.returncode != 0 and valid not in checked.stdout,
+            record("metadata_modified", checked.returncode != 0 and valid not in checked.stdout and
+                   has_status(checked.stdout, "BADSIG", key_id),
                    checked.stdout, checked.returncode)
-            checked = verify(verify_home, root / "missing.asc", metadata)
-            record("metadata_missing_signature", checked.returncode != 0 and valid not in checked.stdout,
+            missing = root / "missing.asc"
+            require(not missing.exists(), "Missing-signature fixture unexpectedly exists")
+            checked = verify(verify_home, missing, metadata)
+            record("metadata_missing_signature", checked.returncode != 0 and valid not in checked.stdout and
+                   has_status(checked.stdout, "FAILURE", "verify"),
                    checked.stdout, checked.returncode)
             report = {"scope": "native RPM signatures and detached repomd.xml signature only; "
                                "metadata checksums, DNF and target runtime not tested",
@@ -213,11 +229,25 @@ printf 'laboratory fixture\\n' > %{buildroot}/usr/share/int-feed-lab/probe
                       "versions": {name: invoke([tools[name], "--version"], env=env).stdout.splitlines()[0]
                                    for name in ("gpg", "rpmkeys", "createrepo_c")},
                       "passed": results}
-            print(json.dumps(report, sort_keys=True), flush=True)
         finally:
+            original_error = sys.exc_info()[1]
+            cleanup_errors = []
             for home in agents:
-                invoke([tools["gpgconf"], "--homedir", home, "--kill", "gpg-agent"],
-                       env=env, ok=False, timeout=15)
+                try:
+                    stopped = invoke([tools["gpgconf"], "--homedir", home, "--kill", "gpg-agent"],
+                                     env=env, ok=False, timeout=15)
+                    if stopped.returncode:
+                        cleanup_errors.append(f"{home.name}: exit {stopped.returncode}: {stopped.stdout.strip()}")
+                except LabError as error:
+                    cleanup_errors.append(f"{home.name}: {error}")
+            if cleanup_errors:
+                message = "Could not stop all laboratory agents: " + "; ".join(cleanup_errors)
+                if original_error is not None:
+                    message += f"; earlier error: {original_error}"
+                raise LabError(message) from original_error
+    # The context manager has removed the temporary key material before any
+    # final success report is emitted.
+    print(json.dumps(report, sort_keys=True), flush=True)
 
 
 if __name__ == "__main__":

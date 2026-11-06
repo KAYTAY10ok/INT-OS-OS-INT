@@ -21,6 +21,20 @@ class SignatureLineTests(unittest.TestCase):
             with self.subTest(output=output):
                 self.assertFalse(lab.signature_ok(output))
 
+    def test_machine_status_requires_exact_record_and_argument(self):
+        output = ('gpg: BAD signature from key DEADBEEF\n'
+                  '[GNUPG:] BADSIG ABCDEF0123456789 signer\n'
+                  '[GNUPG:] NO_PUBKEY 1234567890ABCDEF\n'
+                  '[GNUPG:] FAILURE verify 33587281\n')
+        self.assertTrue(lab.has_status(output, 'BADSIG', 'ABCDEF0123456789'))
+        self.assertTrue(lab.has_status(output, 'NO_PUBKEY', '1234567890ABCDEF'))
+        self.assertTrue(lab.has_status(output, 'FAILURE', 'verify'))
+        self.assertFalse(lab.has_status(output, 'BADSIG', 'DEADBEEF'))
+        self.assertFalse(lab.has_status(output, 'NO_PUBKEY', '12345678'))
+        self.assertFalse(lab.has_status(output, 'FAILURE', 'gpg-exit'))
+        self.assertFalse(lab.has_status('text [GNUPG:] BADSIG ABCDEF0123456789',
+                                        'BADSIG', 'ABCDEF0123456789'))
+
 
 if __name__ == '__main__':
     unittest.main()
