@@ -77,8 +77,9 @@ key is retained as `trusted-public-key.asc`; no private key is copied to the
 fixture directory. An abandoned `/tmp/int-feed-fixtures-*` directory must be
 inspected and removed by its owner after an interrupted run.
 
-A future runner must pin the expected full fingerprint independently of the
-virtual repository disk, use a new guest/cache for each rejection case, and
-record DNF's actual diagnostics and the unchanged installed version. The
-manifest and its key file alone are not an independent trust anchor. See
-[feed-vm-plan.md](feed-vm-plan.md) for the remaining guest acceptance criteria.
+`scripts/qemu-feed-check.py` takes the expected full fingerprint as an
+argument, independently of the virtual repository disk, boots a new guest with
+a fresh cache for each rejection case, and requires DNF's expected diagnostics
+and the unchanged installed version. It has not been run yet. The manifest and
+its key file alone are not an independent trust anchor. See
+[feed-vm-plan.md](feed-vm-plan.md) for the guest acceptance criteria.
