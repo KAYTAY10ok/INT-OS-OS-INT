@@ -58,8 +58,10 @@ inspecte leur provenance avant de les modifier ou de les ajouter.
   `int-image-feed-smoke` et son service ont réussi en QEMU le parcours DNF
   local positif : installation 1.0, mise à jour 2.0 et répétition sans
   changement, avec arrêt propre. Voir [validation VM](validation-feed-vm-2026-11-06.md).
-  Les cas de rejet DNF ne sont pas encore validés ; la cible réseau et le
-  matériel physique ne sont pas couverts.
+  Un second test a confirmé le rejet d'un RPM non signé tout en conservant la
+  version 1.0 ; voir [validation du rejet](validation-feed-unsigned-vm-2026-11-06.md).
+  Les autres cas de rejet DNF, la cible réseau et le matériel physique ne sont
+  pas couverts.
 - Les 87 tests hôte de la suite existante ont réussi ; journal
   `/workspace/int-linux-work/host-tests-fixtures.log`. Ils ne remplacent pas
   les tests natifs et invités.

@@ -1,10 +1,11 @@
 # Isolated DNF feed VM: proposed test plan
 
 Status: the experimental image and guest helper have passed a positive local
-DNF install/update test in QEMU; see
-[validation-feed-vm-2026-11-06.md](validation-feed-vm-2026-11-06.md).
-Negative DNF rejection cases have not yet been run. The existing core and
-desktop image validations do not qualify this plan.
+DNF install/update test and a separate unsigned-package rejection test in
+QEMU; see [positive validation](validation-feed-vm-2026-11-06.md) and
+[unsigned-package validation](validation-feed-unsigned-vm-2026-11-06.md).
+Other DNF rejection cases have not yet been run. The existing core and desktop
+image validations do not qualify this plan.
 The prerequisites, signing limitations and complete negative-case rationale
 are in [signed-feed-plan.md](signed-feed-plan.md). The two small probe recipes
 and their proposed build procedure are described in [feed-probe.md](feed-probe.md).
@@ -32,20 +33,23 @@ enforcement, a working feed, or a successful guest boot. In the locked OE
 source, `rootfs_rpm.bbclass` also adds 100 MiB of extra rootfs space when DNF
 is installed. Verify the actual image manifest and free space after building.
 
-The test-only `int-feed-smoke` package depends on `dnf`, `rpm` and
+The test-only `int-feed-smoke` package depends on `dnf`, `rpm`, `gnupg` and
 `gnupg-gpg`; verify the actual manifest and test dependencies rather than
 assuming this is sufficient.
 
 The test-only oneshot service runs as root on the serial console, then shuts
 down the disposable VM. It requires a read-only `/dev/vdb`, a single
-`int_feed_fingerprint=FULL_40_HEX` and `int_feed_case=success` on the kernel
-command line. It checks the independent pin before importing a key, installs
+`int_feed_fingerprint=FULL_40_HEX` and an `int_feed_case` of `success` or
+`unsigned-rpm` on the kernel command line. It checks the independent pin
+before importing a key, installs
 version 1.0, updates to 2.0 and repeats the update, checking the RPM version
 and installed file each time. It emits ordered `INT_FEED_CHECK` markers, a
 single `INT_FEED_CASE:success:PASS`, and `INT_FEED_SHUTDOWN`; failures emit
 `INT_FEED_FAIL`. The service and its positive DNF commands were tested in the
-guest. Negative cases still need to be implemented and must never be inferred
-from the success path. Do not unlock root, install a reusable credential,
+guest. For the separate unsigned case it checks the signed metadata and
+candidate, requires strict `rpmkeys` and DNF rejection, and confirms version
+1.0 remains installed. Other negative cases still need to be implemented and
+must never be inferred from the success path. Do not unlock root, install a reusable credential,
 enable a remote login, or include this test service in normal images.
 
 Use a separate runner based on the existing `scripts/qemu-smoke.py` snapshot,
