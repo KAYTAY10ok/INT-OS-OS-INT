@@ -22,7 +22,9 @@ class LabError(Exception):
 
 def invoke(argv, *, env, ok=True, timeout=120):
     try:
-        result = subprocess.run([str(arg) for arg in argv], env=env, text=True,
+        # Tool output can contain non-UTF-8 bytes (observed with native
+        # rpmbuild); decode tolerantly so a diagnostic never aborts a test.
+        result = subprocess.run([str(arg) for arg in argv], env=env, text=True, errors="replace",
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 timeout=timeout, check=False)
     except (OSError, subprocess.TimeoutExpired) as error:

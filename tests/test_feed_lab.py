@@ -11,6 +11,15 @@ lab = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(lab)
 
 
+class InvokeTests(unittest.TestCase):
+    def test_non_utf8_tool_output_does_not_abort(self):
+        import os, sys
+        script = "import sys; sys.stdout.buffer.write(b'ok \\xf1 done\\n')"
+        result = lab.invoke([sys.executable, '-c', script], env=os.environ.copy())
+        self.assertEqual(0, result.returncode)
+        self.assertIn('ok \ufffd done', result.stdout)
+
+
 class SignatureLineTests(unittest.TestCase):
     def test_only_accepts_successful_signature_line(self):
         self.assertTrue(lab.signature_ok('    Header V4 RSA/SHA256 Signature, key ID 12345678: OK\n'))
