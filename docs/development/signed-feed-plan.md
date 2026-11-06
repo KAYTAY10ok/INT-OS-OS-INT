@@ -6,15 +6,17 @@ laboratory and a positive local target DNF package update in QEMU now pass;
 see [VM validation](validation-feed-vm-2026-11-06.md). A separate VM test also
 confirmed rejection of an unsigned RPM while preserving the installed version;
 see [unsigned-package validation](validation-feed-unsigned-vm-2026-11-06.md).
-Other rejection and recovery tests remain outstanding. The current minimal
+A further guest test rejected an RPM signed by an untrusted key; see
+[wrong-key validation](validation-feed-wrong-key-vm-2026-11-06.md). Other
+rejection and recovery tests remain outstanding. The current minimal
 images do not contain RPM/DNF runtime tools.
 The console and virtual desktop milestones have since passed their recorded VM
 tests. The separate `--profile feed` configuration now selects the Sequoia
 backend for native and target RPM without changing the preserved image profiles.
 The target RPM and DNF succeeded with signed local fixtures in a positive VM
-scenario and rejected an unsigned RPM in a separate VM. Other negative
-enforcement tests remain necessary before claiming a fully validated signed
-feed.
+scenario and rejected unsigned and wrong-key RPMs in separate VMs. Other
+negative enforcement tests remain necessary before claiming a fully validated
+signed feed.
 
 An experimental `int-feed-lab-native` recipe now prepares a disposable RPM,
 two temporary test keys and detached repository metadata. It exercises native
@@ -47,7 +49,7 @@ The feed build now contains native `rpm`, `rpmkeys`, `rpmsign`,
 `createrepo_c`, `gnupg` and `rpm-sequoia`; the lab exercises them in a
 complete native sysroot. Native DNF components have also been populated by
 earlier builds. DNF acceptance has since passed in a positive local VM test;
-one separate VM test confirmed rejection of an unsigned RPM.
+separate VM tests confirmed rejection of unsigned and wrong-key RPMs.
 
 The earlier default-profile native `librpmio.so.10.2.1` contained the diagnostic
 `RPM was compiled without OpenPGP support`; disassembly of
@@ -62,8 +64,8 @@ PACKAGECONFIG:append:pn-rpm = " sequoia"
 
 These options and their native dependencies are now built in the separate
 feed profile; the native laboratory exercises them. The positive target
-scenario and unsigned-package rejection have also passed in QEMU; other target
-rejection paths remain unqualified. Use
+scenario and unsigned- and wrong-key-package rejection have also passed in
+QEMU; other target rejection paths remain unqualified. Use
 native tools within a correctly populated OE recipe sysroot or a dedicated tool
 recipe: concatenating component `usr/bin` directories does not recreate the
 native sysroot's libraries, Python paths or RPM configuration.
@@ -216,7 +218,10 @@ The positive install/update scenario has passed in QEMU. A separate test
 successfully rejected an unsigned version 2.0 RPM with freshly signed
 metadata while retaining version 1.0; its evidence and limits are in the
 [unsigned-package validation](validation-feed-unsigned-vm-2026-11-06.md).
-All other negative cases below remain to be tested in the guest.
+A further guest test rejected a version 2.0 RPM signed with an untrusted key,
+also retaining version 1.0; see
+[wrong-key validation](validation-feed-wrong-key-vm-2026-11-06.md). Other
+negative cases below remain to be tested in the guest.
 
 Create a tiny no-scriptlet package `int-feed-probe`, versions `1` and `2`,
 installing only its own version file. Use a separate experimental image/build

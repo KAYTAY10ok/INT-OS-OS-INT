@@ -1,9 +1,10 @@
 # Isolated DNF feed VM: proposed test plan
 
 Status: the experimental image and guest helper have passed a positive local
-DNF install/update test and a separate unsigned-package rejection test in
-QEMU; see [positive validation](validation-feed-vm-2026-11-06.md) and
-[unsigned-package validation](validation-feed-unsigned-vm-2026-11-06.md).
+DNF install/update test and separate unsigned-package and wrong-key package
+rejection tests in QEMU; see [positive validation](validation-feed-vm-2026-11-06.md),
+[unsigned-package validation](validation-feed-unsigned-vm-2026-11-06.md) and
+[wrong-key validation](validation-feed-wrong-key-vm-2026-11-06.md).
 Other DNF rejection cases have not yet been run. The existing core and desktop
 image validations do not qualify this plan.
 The prerequisites, signing limitations and complete negative-case rationale
@@ -39,16 +40,17 @@ assuming this is sufficient.
 
 The test-only oneshot service runs as root on the serial console, then shuts
 down the disposable VM. It requires a read-only `/dev/vdb`, a single
-`int_feed_fingerprint=FULL_40_HEX` and an `int_feed_case` of `success` or
-`unsigned-rpm` on the kernel command line. It checks the independent pin
+`int_feed_fingerprint=FULL_40_HEX` and an `int_feed_case` of `success`,
+`unsigned-rpm` or `wrong-key-rpm` on the kernel command line. It checks the independent pin
 before importing a key, installs
 version 1.0, updates to 2.0 and repeats the update, checking the RPM version
 and installed file each time. It emits ordered `INT_FEED_CHECK` markers, a
 single `INT_FEED_CASE:success:PASS`, and `INT_FEED_SHUTDOWN`; failures emit
 `INT_FEED_FAIL`. The service and its positive DNF commands were tested in the
-guest. For the separate unsigned case it checks the signed metadata and
-candidate, requires strict `rpmkeys` and DNF rejection, and confirms version
-1.0 remains installed. Other negative cases still need to be implemented and
+guest. For the separate unsigned and wrong-key cases it checks signed metadata
+and candidate, requires strict `rpmkeys` and DNF rejection, and confirms
+version 1.0 remains installed. The wrong-key case also verifies a trusted RPM
+as a positive `rpmkeys` control. Other negative cases still need to be implemented and
 must never be inferred from the success path. Do not unlock root, install a reusable credential,
 enable a remote login, or include this test service in normal images.
 

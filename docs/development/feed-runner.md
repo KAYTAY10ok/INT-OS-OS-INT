@@ -5,13 +5,16 @@ scenarios. A positive QEMU run using real signed fixtures passed; see
 [the validation record](validation-feed-vm-2026-11-06.md). A separate guest
 run rejected an unsigned package while retaining version 1.0; see
 [the unsigned-package record](validation-feed-unsigned-vm-2026-11-06.md).
+Another run rejected a package signed by an untrusted key, also retaining
+version 1.0; see [the wrong-key record](validation-feed-wrong-key-vm-2026-11-06.md).
 
-The runner accepts `success` and `unsigned-rpm`. Both require the supplied
+The runner accepts `success`, `unsigned-rpm` and `wrong-key-rpm`. All require the supplied
 full test-key fingerprint, installation of version 1.0, exact ordered markers,
 a kernel poweroff message, QEMU exit status zero, and unchanged input and
 snapshot hashes. The success case updates to 2.0 and repeats the update. The
-unsigned case verifies its signed metadata, requires rejection from `rpmkeys`
-and DNF, then checks the installed version remains 1.0. The runner rejects
+negative cases verify signed metadata, require the corresponding `rpmkeys`
+and DNF rejection, then check the installed version remains 1.0. The wrong-key
+case also checks that a trusted signed RPM passes `rpmkeys`. The runner rejects
 absent, duplicate, out-of-order or unknown feed markers, failure messages,
 panics, timeouts, excessive serial output and input changes.
 
@@ -31,8 +34,8 @@ python3 /src/scripts/qemu-feed-check.py \
   --disk-sha256 SIXTY_FOUR_LOWERCASE_HEX_CHARACTERS
 ```
 
-The default is `--case success`; add `--case unsigned-rpm` to run the
-unsigned-package rejection in a fresh QEMU snapshot.
+The default is `--case success`; add `--case unsigned-rpm` or
+`--case wrong-key-rpm` to run that rejection in a fresh QEMU snapshot.
 
 The manifest must include `int-feed-smoke`, `dnf`, `rpm`, `gnupg` and
 `gnupg-gpg`, and its kernel package must match the copied kernel ABI. The runner snapshots the

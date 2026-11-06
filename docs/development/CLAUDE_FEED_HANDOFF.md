@@ -60,8 +60,11 @@ inspecte leur provenance avant de les modifier ou de les ajouter.
   changement, avec arrêt propre. Voir [validation VM](validation-feed-vm-2026-11-06.md).
   Un second test a confirmé le rejet d'un RPM non signé tout en conservant la
   version 1.0 ; voir [validation du rejet](validation-feed-unsigned-vm-2026-11-06.md).
-  Les autres cas de rejet DNF, la cible réseau et le matériel physique ne sont
-  pas couverts.
+  Un troisième a confirmé le rejet d'un RPM signé par une mauvaise clé, après
+  un contrôle positif sur un RPM signé par la clé fiable ; voir
+  [validation de la mauvaise clé](validation-feed-wrong-key-vm-2026-11-06.md).
+  Les autres rejets DNF, la cible réseau et le matériel physique ne sont pas
+  couverts.
 - Les 87 tests hôte de la suite existante ont réussi ; journal
   `/workspace/int-linux-work/host-tests-fixtures.log`. Ils ne remplacent pas
   les tests natifs et invités.
