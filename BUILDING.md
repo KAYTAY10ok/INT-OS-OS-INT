@@ -37,6 +37,14 @@ If a newer helper intentionally changes generated configuration, inspect and
 update the generated files before rerunning configure; it will not overwrite
 local edits automatically.
 
+On a host whose HTTPS proxy listens only on loopback (for example some
+cloud sandboxes), set `INT_DOCKER_NETWORK=host` for every `scripts/int`
+command, including `builder`. Only the exact value `host` is accepted; it
+publishes no port. Configure the proxy for Docker itself (for example
+`~/.docker/config.json` `proxies`) rather than in INT configuration. If the
+sanity check's connectivity URL is not reachable through that proxy, override
+`CONNECTIVITY_CHECK_URIS` in the profile's private `int-local.conf`.
+
 Private/local overrides belong in
 `$INT_WORKDIR/build/conf/int-local.conf` (or the default sibling location).
 Never commit credentials or password hashes. The foundation image has a locked

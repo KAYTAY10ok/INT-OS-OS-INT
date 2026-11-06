@@ -1,0 +1,16 @@
+[Unit]
+Description=INT disposable signed-feed DNF test (QEMU only)
+After=local-fs.target
+Before=serial-getty@ttyS0.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/int-feed-smoke
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/ttyS0
+TTYReset=no
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=multi-user.target

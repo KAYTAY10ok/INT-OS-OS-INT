@@ -75,6 +75,23 @@ class ProfileTests(unittest.TestCase):
                 helper.dispatch(SimpleNamespace(profile='feed', command='build', target=target), self.work)
                 container.assert_called_once_with(self.work, ['bitbake', expected], profile='feed')
 
+    def test_host_network_is_explicit_opt_in_only(self):
+        for value, expected in ((None, False), ('host', True)):
+            environment = {} if value is None else {'INT_DOCKER_NETWORK': value}
+            with self.subTest(value=value), mock.patch.dict('os.environ', environment, clear=False), \
+                    mock.patch.object(helper, 'docker') as docker:
+                if value is None:
+                    helper.os.environ.pop('INT_DOCKER_NETWORK', None)
+                helper.container(self.work, ['true'], profile='feed')
+                command = docker.call_args.args[0]
+                self.assertEqual(expected, '--network' in command)
+                self.assertNotIn('-p', command)
+                self.assertNotIn('--publish', command)
+        for value in ('bridge', 'container:other', 'HOST', ' host'):
+            with self.subTest(value=value), mock.patch.dict('os.environ', {'INT_DOCKER_NETWORK': value}):
+                with self.assertRaisesRegex(RuntimeError, 'accepts only'):
+                    helper.network_args()
+
 
 if __name__ == '__main__':
     unittest.main()

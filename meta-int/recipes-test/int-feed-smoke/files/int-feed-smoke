@@ -1,0 +1,310 @@
+#!/usr/bin/env python3
+"""Disposable QEMU guest test for one signed-feed DNF case.
+
+Runs as a oneshot service in the experimental int-image-feed-smoke image only.
+It reads the case name and the independently pinned full fingerprint from the
+kernel command line, mounts the read-only fixture disk, establishes version
+1.0 from the valid signed feed, then tries one candidate feed. The VM is
+powered off afterwards in every outcome. It never installs a credential,
+unlocks an account or opens a network service.
+"""
+import hashlib
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+DISK_LABEL = "INTFEED"
+MOUNT = Path("/run/int-feed/disk")
+PACKAGE = "int-feed-probe"
+VERSION_FILE = Path("/usr/share/int-feed-probe/version")
+DIAG_LINES = 20
+TIMEOUT = 900
+
+# Candidate feed directory and every diagnostic required to show that DNF
+# refused it at the intended verification stage. These were first observed with
+# DNF 4.14 in a host rehearsal and must be confirmed with the image's DNF.
+METADATA_SIGNATURE = r"repomd\.xml GPG signature verification error"
+GPG_FAILED = r"^Error: GPG check FAILED$"
+NEGATIVE = {
+    "wrong-key-metadata": ("wrong-key-metadata", (METADATA_SIGNATURE,)),
+    "altered-repomd": ("altered-repomd", (METADATA_SIGNATURE,)),
+    "missing-metadata-signature": ("missing-metadata-signature",
+                                   (r"GPG verification is enabled, but GPG signature is not available",)),
+    "missing-repo-key": ("valid-v2", (METADATA_SIGNATURE,)),
+    "wrong-configured-key": ("valid-v2", (METADATA_SIGNATURE,)),
+    "altered-primary": ("altered-primary", (r"primary\.xml", r"checksum doesn't match")),
+    "stale-rpm-checksum": ("stale-rpm-checksum", (r"int-feed-probe-2\.0-r0\.noarch.* has incorrect checksum",)),
+    "unsigned-rpm": ("unsigned-rpm", (r"Package int-feed-probe-2\.0-r0\.noarch\.rpm is not signed", GPG_FAILED)),
+    "wrong-key-rpm": ("wrong-key-rpm", (r"already installed but they are not correct for this package"
+                                        r"|[Pp]ublic key for int-feed-probe-2\.0.* is not installed", GPG_FAILED)),
+    "corrupt-rpm-indexed": ("corrupt-rpm-indexed",
+                            (r"Problem opening package int-feed-probe-2\.0-r0\.noarch\.rpm", GPG_FAILED)),
+}
+CASES = ("valid", *NEGATIVE)
+
+
+class Failure(Exception):
+    pass
+
+
+def emit(line):
+    print(line, flush=True)
+
+
+def check(name):
+    emit(f"INT_FEED_CHECK:{name}:PASS")
+
+
+def require(condition, message):
+    if not condition:
+        raise Failure(message)
+
+
+def printable(text):
+    return "".join(c if 32 <= ord(c) < 127 else "?" for c in text)[:240]
+
+
+def diagnostics(label, output):
+    lines = [line for line in output.splitlines() if line.strip()][-DIAG_LINES:]
+    for line in lines:
+        emit(f"INT_FEED_DIAG:{label}:{printable(line)}")
+
+
+def run(argv, env=None, label=None):
+    try:
+        result = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True, errors="replace",
+                                timeout=TIMEOUT, env=env, check=False)
+    except subprocess.TimeoutExpired as error:
+        raise Failure(f"{Path(argv[0]).name} timed out") from error
+    if label:
+        emit(f"INT_FEED_INFO:{label}:exit={result.returncode}")
+        diagnostics(label, result.stdout)
+    return result
+
+
+def sha256(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def parameters():
+    values = {}
+    for token in Path("/proc/cmdline").read_text().split():
+        if token.startswith("int.feed_") and "=" in token:
+            key, value = token.split("=", 1)
+            require(key not in values, f"duplicate kernel parameter {key}")
+            values[key] = value
+    case = values.get("int.feed_case", "")
+    fingerprint = values.get("int.feed_fpr", "")
+    require(case in CASES, "missing or unknown int.feed_case")
+    require(re.fullmatch(r"[0-9A-F]{40}", fingerprint) is not None,
+            "int.feed_fpr must be a full 40-digit uppercase fingerprint")
+    return case, fingerprint
+
+
+def mount_fixture():
+    device = run(["blkid", "-L", DISK_LABEL]).stdout.strip()
+    require(re.fullmatch(r"/dev/vd[b-z]", device) is not None, f"fixture disk not found: {device!r}")
+    require(Path(f"/sys/block/{device[5:]}/ro").read_text().strip() == "1",
+            "fixture disk is not attached read-only")
+    MOUNT.mkdir(parents=True, exist_ok=True)
+    mounted = run(["mount", "-t", "ext4", "-o", "ro,nosuid,nodev,noexec,noload", device, str(MOUNT)])
+    require(mounted.returncode == 0, f"cannot mount fixture disk: {printable(mounted.stdout)}")
+    emit(f"INT_FEED_INFO:fixture-device:{device}")
+    check("fixture-mounted")
+
+
+def pin_key(trust, fingerprint):
+    """Accept the disk's key only if it is exactly the independently pinned key."""
+    source = MOUNT / "trusted-public-key.asc"
+    require(source.is_file() and not source.is_symlink() and source.stat().st_size < 65536,
+            "trusted-public-key.asc missing or invalid")
+    key = trust / "pinned-key.asc"
+    shutil.copyfile(source, key)
+    home = trust / "gnupg-inspect"
+    home.mkdir(mode=0o700)
+    listing = run(["gpg", "--no-options", "--homedir", str(home), "--batch", "--with-colons",
+                   "--import-options", "show-only", "--import", str(key)])
+    require(listing.returncode == 0, "gpg could not parse the public key")
+    records = [line.split(":") for line in listing.stdout.splitlines()]
+    kinds = [fields[0] for fields in records]
+    require("sec" not in kinds and "ssb" not in kinds, "key file contains secret key material")
+    require(kinds.count("pub") == 1 and "sub" not in kinds, "expected exactly one primary key, no subkeys")
+    pub = next(fields for fields in records if fields[0] == "pub")
+    require(pub[1] not in ("e", "r", "i", "d") and "s" in pub[11].lower(),
+            "pinned key is expired, revoked, invalid or cannot sign")
+    fingerprints = [fields[9] for fields in records if fields[0] == "fpr"]
+    require(fingerprints == [fingerprint], "public key fingerprint differs from the pinned fingerprint")
+    emit(f"INT_FEED_INFO:pinned-fingerprint:{fingerprint}")
+    emit(f"INT_FEED_INFO:pinned-key-sha256:{sha256(key)}")
+    check("pinned-key")
+    return key
+
+
+def rpm_backend(trust, key):
+    """Positive and empty-trust signature checks with isolated RPM databases."""
+    package = MOUNT / "valid-v2" / f"{PACKAGE}-2.0-r0.noarch.rpm"
+    trusted, empty = trust / "rpmdb-trusted", trust / "rpmdb-empty"
+    for db in (trusted, empty):
+        db.mkdir(mode=0o700)
+    strict = ["--define", "_pkgverify_level all"]
+    imported = run(["rpmkeys", "--define", f"_dbpath {trusted}", "--import", str(key)], label="rpmkeys-import")
+    require(imported.returncode == 0, "rpmkeys could not import the pinned key")
+    good = run(["rpmkeys", "--define", f"_dbpath {trusted}", *strict, "--checksig", "--verbose", str(package)],
+               label="rpmkeys-trusted")
+    require(good.returncode == 0 and re.search(r"\bsignature\b.*:\s*OK\s*$", good.stdout, re.I | re.M)
+            and not re.search(r"NOKEY|NOTFOUND|BAD", good.stdout),
+            "RPM backend did not report a valid OpenPGP signature")
+    check("rpm-signature-backend")
+    bad = run(["rpmkeys", "--define", f"_dbpath {empty}", *strict, "--checksig", "--verbose", str(package)],
+              label="rpmkeys-empty-trust")
+    require(bad.returncode != 0 and "NOKEY" in bad.stdout and
+            not re.search(r"\bsignature\b.*:\s*OK\s*$", bad.stdout, re.I | re.M),
+            "empty RPM trust database did not reject the signed package")
+    check("rpm-empty-trust-rejected")
+
+
+class Dnf:
+    def __init__(self, root, key):
+        self.root, self.key, self.count = root, key, 0
+
+    def repo(self, directory, gpgkey="pinned"):
+        """Create a fresh repository ID, configuration and cache for one feed."""
+        self.count += 1
+        repo_id = f"int-feed-{self.count}"
+        base = self.root / repo_id
+        (base / "repos.d").mkdir(parents=True)
+        (base / "cache").mkdir()
+        lines = [f"[{repo_id}]", f"name=INT disposable test feed {self.count}",
+                 f"baseurl=file://{MOUNT / directory}", "enabled=1", "gpgcheck=1",
+                 "repo_gpgcheck=1", "skip_if_unavailable=0", "metadata_expire=0"]
+        if gpgkey == "pinned":
+            lines.append(f"gpgkey=file://{self.key}")
+        elif gpgkey is not None:
+            lines.append(f"gpgkey=file://{gpgkey}")
+        (base / "repos.d" / f"{repo_id}.repo").write_text("\n".join(lines) + "\n")
+        conf = base / "dnf.conf"
+        conf.write_text("\n".join([
+            "[main]", "gpgcheck=1", "repo_gpgcheck=1", "localpkg_gpgcheck=1",
+            "skip_if_unavailable=0", "plugins=0", "install_weak_deps=0", "keepcache=0",
+            f"reposdir={base / 'repos.d'}", f"cachedir={base / 'cache'}", ""]))
+        emit(f"INT_FEED_INFO:{repo_id}:{directory}:gpgkey={'none' if gpgkey is None else gpgkey}")
+        return repo_id, conf
+
+    def __call__(self, repo, label, *arguments):
+        repo_id, conf = repo
+        argv = ["dnf", "-c", str(conf), "--disablerepo=*", f"--enablerepo={repo_id}",
+                "--assumeyes", "--setopt=tsflags=nodocs", *arguments]
+        require("--nogpgcheck" not in argv, "refusing --nogpgcheck")
+        return run(argv, env=dict(os.environ, LC_ALL="C"), label=label)
+
+
+def installed():
+    query = run(["rpm", "-q", "--qf", "%{VERSION}-%{RELEASE}\\n", PACKAGE])
+    content = VERSION_FILE.read_text() if VERSION_FILE.is_file() else None
+    return (query.stdout.strip() if query.returncode == 0 else None), content
+
+
+def expect_installed(version, label):
+    state = installed()
+    emit(f"INT_FEED_INFO:installed-{label}:{state[0]}:{printable(repr(state[1]))}")
+    require(state == (f"{version}-r0", f"{version}\n"), f"installed state is {state}, expected {version}")
+    check(f"installed-{label}")
+
+
+def trusted_rpm_keys(fingerprint):
+    query = run(["rpm", "-q", "--qf", "%{VERSION}\\n", "gpg-pubkey"])
+    keys = query.stdout.split() if query.returncode == 0 else []
+    emit(f"INT_FEED_INFO:rpm-gpg-pubkeys:{','.join(keys) or 'none'}")
+    return keys
+
+
+def wrong_public_key(trust):
+    """Create a throwaway, unrelated public key inside the disposable guest."""
+    home = trust / "gnupg-wrong"
+    home.mkdir(mode=0o700)
+    base = ["gpg", "--no-options", "--homedir", str(home), "--batch"]
+    made = run([*base, "--pinentry-mode", "loopback", "--passphrase", "", "--quick-generate-key",
+                "INT FEED GUEST WRONG KEY <wrong@example.invalid>", "ed25519", "sign", "1d"])
+    require(made.returncode == 0, "could not create the unrelated guest key")
+    public = trust / "wrong-key.asc"
+    exported = run([*base, "--armor", "--output", str(public), "--export", "wrong@example.invalid"])
+    run(["gpgconf", "--homedir", str(home), "--kill", "gpg-agent"])
+    shutil.rmtree(home)
+    require(exported.returncode == 0 and public.stat().st_size > 0, "could not export the unrelated key")
+    return public
+
+
+def main():
+    case, fingerprint = parameters()
+    emit(f"INT_FEED_BEGIN:{case}")
+    for tool in (["rpm", "--version"], ["dnf", "--version"], ["gpg", "--version"]):
+        version = run(tool).stdout.splitlines()
+        emit(f"INT_FEED_INFO:version:{printable(version[0] if version else 'unknown')}")
+    mount_fixture()
+    trust = Path(tempfile.mkdtemp(prefix="int-feed-trust-", dir="/run"))
+    key = pin_key(trust, fingerprint)
+    rpm_backend(trust, key)
+    require(trusted_rpm_keys(fingerprint) == [], "system RPM database already trusts a key")
+    require(installed()[0] is None and not VERSION_FILE.exists(), "probe unexpectedly preinstalled")
+    check("clean-initial-state")
+
+    dnf = Dnf(trust / "dnf", key)
+    baseline = dnf.repo("valid-v1")
+    require(dnf(baseline, "makecache-v1", "makecache").returncode == 0, "signed v1 metadata rejected")
+    check("metadata-v1")
+    require(dnf(baseline, "install-v1", "install", PACKAGE).returncode == 0, "signed v1 install failed")
+    require(trusted_rpm_keys(fingerprint) == [fingerprint[-8:].lower()],
+            "RPM database does not trust exactly the pinned key")
+    expect_installed("1.0", "v1")
+    for name in ("valid-v1", *[value[0] for value in NEGATIVE.values()], "valid-v2"):
+        for path in (MOUNT / name).glob("*.rpm"):
+            emit(f"INT_FEED_INFO:sha256:{name}/{path.name}:{sha256(path)}")
+        emit(f"INT_FEED_INFO:sha256:{name}/repodata/repomd.xml:{sha256(MOUNT / name / 'repodata' / 'repomd.xml')}")
+
+    if case == "valid":
+        candidate = dnf.repo("valid-v2")
+        require(dnf(candidate, "makecache-v2", "makecache").returncode == 0, "signed v2 metadata rejected")
+        check("metadata-v2")
+        require(dnf(candidate, "upgrade-v2", "upgrade", PACKAGE).returncode == 0, "signed v2 upgrade failed")
+        expect_installed("2.0", "v2")
+        again = dnf(candidate, "upgrade-repeat", "upgrade", PACKAGE)
+        require(again.returncode == 0 and "Nothing to do" in again.stdout, "repeated upgrade was not a no-op")
+        expect_installed("2.0", "repeat")
+    else:
+        directory, expected = NEGATIVE[case]
+        gpgkey = "pinned"
+        if case == "missing-repo-key":
+            gpgkey = None
+        elif case == "wrong-configured-key":
+            gpgkey = wrong_public_key(trust)
+        candidate = dnf.repo(directory, gpgkey)
+        result = dnf(candidate, "candidate", "upgrade", PACKAGE)
+        require(result.returncode != 0, "candidate feed was accepted")
+        missing = [pattern for pattern in expected if not re.search(pattern, result.stdout, re.M)]
+        require(not missing, f"candidate was refused without the expected diagnostics: {missing}")
+        check("rejected")
+        expect_installed("1.0", "unchanged")
+        require(trusted_rpm_keys(fingerprint) == [fingerprint[-8:].lower()],
+                "candidate changed the RPM trust database")
+        check("trust-unchanged")
+    emit(f"INT_FEED_CASE:{case}:PASS")
+
+
+if __name__ == "__main__":
+    status = 1
+    try:
+        main()
+        status = 0
+    except Failure as error:
+        emit(f"INT_FEED_FAIL:{printable(str(error))}")
+    except Exception as error:  # Report unexpected failures on the console too.
+        emit(f"INT_FEED_FAIL:{type(error).__name__}:{printable(str(error))}")
+    finally:
+        os.sync()
+        subprocess.run(["systemctl", "--no-block", "poweroff"], check=False)
+    sys.exit(status)

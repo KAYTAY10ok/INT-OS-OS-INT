@@ -28,6 +28,19 @@ def docker(args, **kwargs):
     return run(["docker", "--host=unix:///var/run/docker.sock", *args], env=env, **kwargs)
 
 
+def network_args():
+    """Optional host networking for hosts whose HTTPS proxy listens on loopback.
+
+    Only the exact value "host" is accepted. No port is published either way.
+    """
+    mode = os.environ.get("INT_DOCKER_NETWORK", "")
+    if mode == "":
+        return []
+    if mode != "host":
+        raise RuntimeError('INT_DOCKER_NETWORK accepts only "host"')
+    return ["--network", "host"]
+
+
 def workdir():
     path = Path(os.environ.get("INT_WORKDIR", REPO.parent / "int-linux-work")).resolve()
     if path == REPO or REPO in path.parents or path == Path("/"):
@@ -129,7 +142,7 @@ include int-local.conf
 
 
 def container(work, command, interactive=False, profile="core"):
-    args = ["run", "--rm", "--init", "--security-opt", "seccomp=unconfined",
+    args = ["run", "--rm", "--init", "--security-opt", "seccomp=unconfined", *network_args(),
             "--user", f"{os.getuid()}:{os.getgid()}",
             "--mount", f"type=bind,src={REPO},dst=/src,readonly",
             "--mount", f"type=bind,src={work},dst=/work"]
@@ -154,8 +167,10 @@ exec "$@"
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=["core", "desktop", "feed"], default="core")
-    parser.add_argument("command", choices=["bootstrap", "builder", "configure", "build", "shell", "check", "smoke", "core-check", "desktop-check", "graphics-check"])
+    parser.add_argument("command", choices=["bootstrap", "builder", "configure", "build", "shell", "check", "smoke", "core-check", "desktop-check", "graphics-check", "feed-check"])
     parser.add_argument("target", nargs="?")
+    parser.add_argument("extra", nargs=argparse.REMAINDER,
+                        help="feed-check only: runner options after the fixture disk directory")
     args = parser.parse_args()
     work = workdir()
     work.mkdir(parents=True, exist_ok=True)
@@ -171,7 +186,7 @@ def dispatch(args, work):
     elif args.command == "builder":
         if os.getuid() == 0:
             raise RuntimeError("Run the builder as a non-root development user")
-        docker(["build", "--secret", "id=ca_bundle,src=/etc/ssl/certs/ca-certificates.crt",
+        docker(["build", *network_args(), "--secret", "id=ca_bundle,src=/etc/ssl/certs/ca-certificates.crt",
                 "--build-arg", f"BUILD_UID={os.getuid()}", "--build-arg", f"BUILD_GID={os.getgid()}",
                 "-f", REPO / "containers/builder.Dockerfile", "-t", IMAGE, REPO / "containers"])
     elif args.command == "configure":
@@ -187,6 +202,13 @@ def dispatch(args, work):
         container(work, ["python3", "/src/scripts/qemu-smoke.py", deploy, "/work/evidence"], profile=profile)
     elif args.command == "core-check":
         container(work, ["python3", "/src/scripts/qemu-core-check.py", deploy, "/work/evidence"], profile=profile)
+    elif args.command == "feed-check":
+        if profile != "feed":
+            raise RuntimeError("feed-check requires --profile feed")
+        if not args.target:
+            raise RuntimeError("feed-check requires a fixture disk directory under /work")
+        container(work, ["python3", "/src/scripts/qemu-feed-check.py", deploy, args.target,
+                         "/work/evidence", *getattr(args, "extra", [])], profile=profile)
     elif args.command == "desktop-check":
         if profile != "desktop":
             raise RuntimeError("desktop-check requires --profile desktop")
