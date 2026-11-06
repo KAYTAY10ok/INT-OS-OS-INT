@@ -38,7 +38,7 @@ MARKERS = (
     "INT_FEED_CASE:success:PASS",
     "INT_FEED_SHUTDOWN",
 )
-REQUIRED_PACKAGES = frozenset({"int-feed-smoke", "dnf", "rpm", "gnupg-gpg"})
+REQUIRED_PACKAGES = frozenset({"int-feed-smoke", "dnf", "rpm", "gnupg", "gnupg-gpg"})
 
 
 def validate_feed_manifest(path: Path) -> None:

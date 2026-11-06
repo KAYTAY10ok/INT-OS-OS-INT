@@ -72,6 +72,12 @@ class FeedProtocolTests(unittest.TestCase):
             manifest.write_text('rpm x86_64 1\ndnf x86_64 1\n')
             with self.assertRaisesRegex(ValueError, 'int-feed-smoke'):
                 feed.validate_feed_manifest(manifest)
+            for missing in ('gnupg', 'gnupg-gpg'):
+                with self.subTest(missing=missing):
+                    manifest.write_text('\n'.join(f'{name} x86_64 1'
+                                                  for name in feed.REQUIRED_PACKAGES - {missing}) + '\n')
+                    with self.assertRaisesRegex(ValueError, f'feed manifest lacks required packages: {missing}$'):
+                        feed.validate_feed_manifest(manifest)
 
     def test_detects_input_or_snapshot_changes(self):
         with tempfile.TemporaryDirectory() as tmp:
