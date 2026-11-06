@@ -1,26 +1,28 @@
 # First signed RPM feed: implementation and evidence plan
 
 Status: researched against locked OE-Core revision
-`ae5a301091f5b0574ea7444aab40b309b6d9f3f2`. No INT feed, signing key,
-signature verification, package update or recovery test is claimed by this
-document. The current minimal images do not contain RPM/DNF runtime tools.
+`ae5a301091f5b0574ea7444aab40b309b6d9f3f2`. A disposable native signature
+laboratory now passes; no working INT feed, target package update or recovery
+test is claimed. The current minimal images do not contain RPM/DNF runtime tools.
 The console and virtual desktop milestones have since passed their recorded VM
 tests. The separate `--profile feed` configuration now selects the Sequoia
 backend for native and target RPM without changing the preserved image profiles.
-The backend build and real signature tests remain required before claiming a
-working signed feed.
+Building and testing the target RPM and DNF remain necessary before claiming
+a working signed feed.
 
 An experimental `int-feed-lab-native` recipe now prepares a disposable RPM,
 two temporary test keys and detached repository metadata. It exercises native
 signature acceptance and rejection, but does not audit the metadata checksum
-chain, test DNF or test the target image. It has not yet been run.
+chain, test DNF or test the target image. The real native run passed its ten
+cases; see [native validation](validation-feed-native-2026-11-06.md) and
+`/workspace/int-linux-work/feed-lab-20261106-retry2.log`.
 
 The RPM tests explicitly request `_pkgverify_level all`. A separate unsigned
-control demonstrates that RPM's default digest policy can accept an unsigned
-package, and then checks that the strict policy rejects it. Both controls
-still need to be exercised with the built tools.
+control demonstrated that RPM's default digest policy accepted an unsigned
+package, while the strict policy rejected it.
 
-After the current build finishes, capture its console output outside the checkout:
+To repeat the native laboratory after other operations finish, capture its
+console output outside the checkout:
 
 ```sh
 set -o pipefail
@@ -35,12 +37,12 @@ remove the recipe's task logs.
 
 ## Current prerequisites
 
-The build already contains native `rpm`, `rpmkeys`, `rpmsign`,
-`createrepo_c`, `dnf`, `libdnf`, `librepo` and `gpgme` components. It does not
-contain `gnupg-native` or `rpm-sequoia-native` in its populated components.
-This was established by inspecting files, not by running a signing test.
+The feed build now contains native `rpm`, `rpmkeys`, `rpmsign`,
+`createrepo_c`, `gnupg` and `rpm-sequoia`; the lab exercises them in a
+complete native sysroot. Native DNF components have also been populated by
+earlier builds, but DNF acceptance or rejection has not been tested here.
 
-The current native `librpmio.so.10.2.1` contains the diagnostic
+The earlier default-profile native `librpmio.so.10.2.1` contained the diagnostic
 `RPM was compiled without OpenPGP support`; disassembly of
 `pgpVerifySignature` shows an unconditional failure return. Digest support is
 not proof of OpenPGP verification. OE's signing self-test explicitly enables
@@ -51,9 +53,9 @@ PACKAGECONFIG:append:pn-rpm-native = " sequoia"
 PACKAGECONFIG:append:pn-rpm = " sequoia"
 ```
 
-These options, GnuPG and their Rust/Sequoia dependencies have not been built
-or enabled by this research. Their build cost remains unmeasured. Use native
-tools within a correctly populated OE recipe sysroot or a dedicated tool
+These options and their native dependencies are now built in the separate
+feed profile; the native laboratory exercises them. Target runtime remains
+unqualified. Use native tools within a correctly populated OE recipe sysroot or a dedicated tool
 recipe: concatenating component `usr/bin` directories does not recreate the
 native sysroot's libraries, Python paths or RPM configuration.
 
@@ -109,7 +111,8 @@ that value through command arguments in `oe/gpg_sign.py`. A real release
 secret must not enter BitBake metadata, task logs, process arguments or caches.
 Production signing requires a separately reviewed interface and key custody.
 
-Proposed lab interface, not an executed test:
+Suggested disposable-key procedure; the native lab has exercised a similar
+procedure with a 2048-bit laboratory key, but this example is not a release interface:
 
 1. Create a temporary directory with mode `0700` outside the checkout and
    persistent evidence directory. Use it as `GNUPGHOME`. Generate a key with
@@ -140,8 +143,8 @@ Proposed lab interface, not an executed test:
 
 Any implementation must construct subprocess argv lists, not interpolate
 filenames or identities into a shell. The native `rpmsign` wrapper and RPM
-macro paths must be used from the complete native sysroot. The commands above
-are a source-based proposal until exercised with OpenPGP-enabled RPM.
+macro paths must be used from the complete native sysroot. The successful test
+does not validate every variant of the illustrative commands above.
 
 ## Proposed read-only audit helper
 

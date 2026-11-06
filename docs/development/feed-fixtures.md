@@ -1,10 +1,12 @@
 # Disposable signed-feed fixtures
 
 `int-feed-lab-native` has an explicit `create_feed_fixtures` task for preparing
-artifacts for the proposed isolated VM experiment. The task and generator
-have **not yet been executed with OE's native tools**. Their output would be
-fixtures, not evidence that DNF or the guest accepts or rejects them. They
-are not a release signing system or a production repository.
+artifacts for the proposed isolated VM experiment. The generator has been
+executed successfully with copied OE native tools in a separate container;
+the `create_feed_fixtures` BitBake task has not yet succeeded. See the
+[isolated validation](validation-feed-fixtures-2026-11-06.md) for paths,
+hashes and limits. The output is not evidence that DNF or the guest accepts
+or rejects it, a release signing system, or a production repository.
 
 First build and copy both unsigned `int-feed-probe` RPMs as described in
 [feed-probe.md](feed-probe.md). Wait for all other INT build operations to
@@ -58,9 +60,10 @@ The native toolchain, test key, output and manifest are all experimental.
 | `corrupt-rpm-indexed` | Corrupt signed version 2 with freshly indexed and correctly signed metadata |
 
 The task checks input RPM metadata for scriptlets, package and file triggers,
-and permits only the probe directory and a regular version file in the listed
-paths. It does not inspect the version file's payload. It checks generated
-primary indexes contain exactly the intended RPM and its SHA-256, verifies
+and permits only `/usr`, `/usr/share`, the probe directory and a regular
+version file in the listed paths. It does not inspect the version file's
+payload. It checks generated primary indexes contain exactly the intended RPM
+and its SHA-256, verifies
 that the two stale-checksum variants fail at their intended checks, and checks
 selected signatures with the native tools. It does not
 perform a complete metadata audit, a DNF transaction or a target runtime test.
@@ -77,9 +80,8 @@ key is retained as `trusted-public-key.asc`; no private key is copied to the
 fixture directory. An abandoned `/tmp/int-feed-fixtures-*` directory must be
 inspected and removed by its owner after an interrupted run.
 
-`scripts/qemu-feed-check.py` takes the expected full fingerprint as an
-argument, independently of the virtual repository disk, boots a new guest with
-a fresh cache for each rejection case, and requires DNF's expected diagnostics
-and the unchanged installed version. It has not been run yet. The manifest and
-its key file alone are not an independent trust anchor. See
-[feed-vm-plan.md](feed-vm-plan.md) for the guest acceptance criteria.
+A future runner must pin the expected full fingerprint independently of the
+virtual repository disk, use a new guest/cache for each rejection case, and
+record DNF's actual diagnostics and the unchanged installed version. The
+manifest and its key file alone are not an independent trust anchor. See
+[feed-vm-plan.md](feed-vm-plan.md) for the remaining guest acceptance criteria.

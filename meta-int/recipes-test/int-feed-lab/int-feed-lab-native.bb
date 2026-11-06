@@ -6,7 +6,9 @@ S = "${UNPACKDIR}"
 
 inherit native python3native
 
-DEPENDS = "rpm-native gnupg-native createrepo-c-native"
+DEPENDS = "rpm-native gnupg-native createrepo-c-native file-native"
+# Match the native file binary with the native MAGIC database used by RPM.
+EXTRANATIVEPATH += "file-native"
 
 # This is a test, not a distributable signing service. A fresh temporary key
 # and fixture are created for every invocation and deleted after the test.

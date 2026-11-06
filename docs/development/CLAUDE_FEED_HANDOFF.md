@@ -42,21 +42,24 @@ inspecte leur provenance avant de les modifier ou de les ajouter.
   `build-desktop`. Le contrôle de configuration a confirmé `sequoia` dans
   `PACKAGECONFIG` pour `rpm-native` et `rpm` cible. Voir
   `/workspace/int-linux-work/check-feed.log`.
-- La compilation de `rpm-native` avec ses dépendances Sequoia a réussi :
-  920 tâches, aucune erreur. Journal :
-  `/workspace/int-linux-work/build-rpm-sequoia.log`. Une compilation réussie
-  **ne prouve pas** que les signatures sont effectivement vérifiées.
-- Le laboratoire `int-feed-lab-native` est lancé ; son journal est
-  `/workspace/int-linux-work/feed-lab-20261106-native.log`. Il n'a pas encore
-  fourni de résultat de signature au moment de cette passation. Vérifie le
-  verrou, les processus et ce journal avant toute opération. Le générateur de
-  fixtures existe également, mais son résultat avec les vrais outils natifs
-  reste à établir.
+- La compilation de `rpm-native` avec Sequoia a réussi ; le laboratoire
+  `int-feed-lab-native` a ensuite vérifié une signature RPM et une signature
+  détachée `repomd.xml`, ainsi que leurs cas négatifs natifs. Les dix cas
+  passent dans `/workspace/int-linux-work/feed-lab-20261106-retry2.log` ; voir
+  [validation native](validation-feed-native-2026-11-06.md). Cela ne valide
+  pas DNF, RPM cible ni l'ensemble des sommes de métadonnées.
+- Le générateur de fixtures a ensuite réussi avec de vrais outils natifs
+  copiés dans un conteneur isolé. Son manifeste, son journal, le disque EXT4
+  préparé et leurs empreintes sont dans la
+  [validation des fixtures](validation-feed-fixtures-2026-11-06.md). La clé
+  jetable expire le 7 novembre 2026 à 13:19:05 UTC ; utilise une nouvelle clé
+  si nécessaire. Cet essai direct ne valide pas la tâche BitBake ni DNF.
 - `int-feed-probe` existe en versions `1.0` et `2.0`, et
   `int-image-feed-smoke` existe comme recette expérimentale. Aucune installation
-  ni mise à jour DNF en VM n'a encore été démontrée à cette date. L'image ne
-  contient pas encore le service de test ; malgré son nom, elle n'exécute pas
-  encore de smoke test.
+  ni mise à jour DNF en VM n'a encore été démontrée à cette date. Un service
+  invité de test du parcours positif et un lanceur QEMU sont en préparation ;
+  leurs modifications et leur état de construction doivent être inspectés
+  avant utilisation. Ils ne constituent pas encore une validation invitée.
 - Les 87 tests hôte de la suite existante ont réussi ; journal
   `/workspace/int-linux-work/host-tests-fixtures.log`. Ils ne remplacent pas
   les tests natifs et invités.
@@ -97,8 +100,9 @@ nettoyage destructif pour récupérer de l'espace.
 
 ## Lot 1 — signatures natives réelles
 
-Après la fin de toute opération active, si le laboratoire n'a pas déjà été
-exécuté avec succès, lance depuis le dépôt :
+Le laboratoire natif a réussi comme indiqué ci-dessus. Si une modification
+nécessite de le relancer, attends la fin de toute opération active puis lance
+depuis le dépôt :
 
 ```sh
 set -o pipefail
@@ -106,9 +110,9 @@ set -o pipefail
   tee "/workspace/int-linux-work/feed-lab-$(date -u +%Y%m%dT%H%M%SZ).log"
 ```
 
-Corrige les erreurs de recette, de sysroot ou d'interaction entre les outils
-en t'appuyant sur leurs sorties réelles, puis relance et garde les deux
-journaux. Le résultat doit prouver une vraie signature RPM valide et le rejet
+Si le test échoue, corrige les erreurs de recette, de sysroot ou d'interaction
+entre les outils en t'appuyant sur leurs sorties réelles, puis relance et garde
+les journaux. Le résultat doit prouver une vraie signature RPM valide et le rejet
 d'une clé absente ou incorrecte, d'un paquet altéré et d'un paquet non signé
 avec une politique exigeant des signatures. Il doit aussi vérifier la
 signature de `repomd.xml` et les cas négatifs prévus. L'acceptation d'un simple
@@ -124,15 +128,17 @@ pris au hasard dans plusieurs répertoires.
 
 ## Lot 2 — fixtures et image expérimentale
 
-1. Construis séparément les deux versions de `int-feed-probe` et copie les RPM
-   non signés avant que la seconde construction puisse modifier le répertoire
-   de déploiement. Suis exactement [feed-probe.md](feed-probe.md), dans le
-   shell du profil `feed` et une fois le verrou libre.
-2. Exécute ensuite la tâche optionnelle `create_feed_fixtures` conformément à
+1. Les deux versions de `int-feed-probe` ont été construites et copiées pour
+   l'essai isolé. Pour les régénérer, construis-les séparément et copie le
+   premier RPM avant que la seconde construction puisse modifier le répertoire
+   de déploiement ; suis [feed-probe.md](feed-probe.md), dans le shell du profil
+   `feed` et une fois le verrou libre.
+2. Exécute la tâche optionnelle `create_feed_fixtures` conformément à
    [feed-fixtures.md](feed-fixtures.md). Elle signe des copies, crée des
    variantes positives et négatives et produit son manifeste uniquement après
    nettoyage ordinaire des clés temporaires. Vérifie réellement la sortie ;
-   une génération interrompue sans manifeste n'est pas un succès. Un arrêt
+   une génération interrompue sans manifeste n'est pas un succès. Le succès
+   direct dans le conteneur isolé ne valide pas encore cette tâche BitBake. Un arrêt
    brutal peut laisser des clés jetables sous `/tmp` : inspecte avant tout
    nettoyage ciblé, et ne prétends pas à un effacement sécurisé.
 3. Construis l'image expérimentale avec
@@ -203,32 +209,3 @@ Poursuis ensuite les autres étapes de la spécification par petits jalons
 vérifiables, en conservant une architecture partagée INT-OS / OS-INT. Si une
 action dépend d'un secret, d'un accès indisponible ou d'une décision produit
 essentielle, expose précisément le blocage et termine le travail indépendant.
-
-## Avancement 2026-11-06
-
-- Ajouté : le paquet de test `int-feed-smoke`
-  (`meta-int/recipes-test/int-feed-smoke`), installé uniquement dans
-  `int-image-feed-smoke`. Un démarrage exécute un seul cas DNF (mise à jour
-  valide et idempotence, ou l'un des dix cas de rejet), lit l'empreinte
-  attendue sur la ligne de commande du noyau (`int.feed_fpr`), monte le disque
-  de fixtures `INTFEED` en lecture seule (`nosuid,nodev,noexec,noload`),
-  vérifie une signature `rpmkeys` valide et le rejet `NOKEY` avec une base de
-  confiance vide, puis éteint la VM.
-- Ajouté : `scripts/qemu-feed-check.py` et
-  `./scripts/int --profile feed feed-check /work/feed-disks/NAME --fingerprint FPR --feed-sha256 SHA [--case NAME]...`.
-  Pas de carte réseau, disque racine en instantané, disque de fixtures en
-  `readonly=on` et vérifié par hash avant et après chaque cas.
-  `INT_DOCKER_NETWORK=host` est documenté dans [BUILDING.md](../../BUILDING.md).
-  Procédure exacte : [feed-vm-plan.md](feed-vm-plan.md).
-- **Rien n'a encore été construit ni démarré** : image, laboratoire natif
-  `int-feed-lab-native`, paquets de test et fixtures restent à produire ; une
-  compilation de `int-feed-lab-native` est en cours. Les diagnostics DNF
-  attendus proviennent d'une répétition sur l'hôte avec les outils Ubuntu
-  24.04 (DNF 4.14, RPM 4.18, createrepo_c 0.17.3, GnuPG 2.4.4), où le
-  générateur et les onze cas ont réussi. Ce n'est pas une preuve OE ni invité :
-  à confirmer avec DNF 4.24 et RPM 4.20.1 + Sequoia d'OE.
-- Limites connues : aucun cas avec moteur OpenPGP RPM désactivé (seul le
-  contrôle positif existe) ; les clés de laboratoire expirent après un jour,
-  donc fixtures, disque et exécutions VM doivent tenir dans ce délai ;
-  fraîcheur/rejeu, rotation des clés, reprise après interruption, transport
-  réseau et garde des clés de production restent hors périmètre.

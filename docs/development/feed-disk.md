@@ -18,13 +18,14 @@ python3 scripts/feed-disk.py ../int-linux-work/feed-fixtures/NAME \
 The new directory contains `feed.ext4` and `report.json`, including the image
 and source-manifest hashes. An existing destination is never reused; a failed
 run can leave an incomplete destination for inspection. The image is marked
-read-only on the host. `scripts/qemu-feed-check.py` (through
-`./scripts/int --profile feed feed-check`) attaches it as a second virtio
-disk with `readonly=on` and, before and after each case, requires its hash to
-match both `report.json` and an independently supplied `--feed-sha256`. The
-guest service mounts it read-only and pins the full signing-key fingerprint
-from the kernel command line, not from the disk. Neither has been run yet; see
-[feed-vm-plan.md](feed-vm-plan.md).
+read-only on the host, but a future QEMU runner must also explicitly attach
+it read-only and verify the expected hash before and after use. The future
+guest must independently pin the expected full signing-key fingerprint.
+
+An EXT4 image has since been created from the actual isolated fixture run;
+the [validation record](validation-feed-fixtures-2026-11-06.md) lists its
+path, hashes and short-lived public-key fingerprint. Its creation does not
+establish QEMU boot, DNF behavior or target signature enforcement.
 
 Host-only tests cover manifest/path checks. On hosts with both `mke2fs` and
 `debugfs`, they also construct a synthetic EXT4 image and inspect a file within

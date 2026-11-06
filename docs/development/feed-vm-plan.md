@@ -1,147 +1,97 @@
-# Isolated DNF feed VM: test design and procedure
+# Isolated DNF feed VM: proposed test plan
 
-Status (2026-11-06): the experimental image recipe, the test-only guest
-service and its QEMU runner exist in the repository, but none of them has been
-built, booted or run. The feed-profile image, the OE native laboratory
-(`int-feed-lab-native`), the probe packages and a fixture set have not yet been
-produced together; no DNF feed, installation, update or rejection test has run
-in a guest. The guest's expected DNF diagnostics were derived from a host
-rehearsal with Ubuntu 24.04 tools (DNF 4.14, RPM 4.18, createrepo_c 0.17.3,
-GnuPG 2.4.4), in which the fixture generator and all eleven guest cases
-passed. That rehearsal is not OE or guest evidence: the patterns must be
-confirmed with OE's DNF 4.24 and RPM 4.20.1 with Sequoia. The existing core
-and desktop image validations do not qualify this plan.
+Status: an experimental image recipe and a guest helper for the positive
+`success` case exist, but have not yet been built or booted. No DNF feed,
+installation, update or rejection test has been run. The existing core and
+desktop image validations do not qualify this plan.
 The prerequisites, signing limitations and complete negative-case rationale
 are in [signed-feed-plan.md](signed-feed-plan.md). The two small probe recipes
-and their proposed build procedure are described in [feed-probe.md](feed-probe.md),
-fixture generation in [feed-fixtures.md](feed-fixtures.md) and the fixture disk
-in [feed-disk.md](feed-disk.md).
+and their proposed build procedure are described in [feed-probe.md](feed-probe.md).
 
-## Experimental image
+## Experimental image and transport
 
 The separate `int-image-feed-smoke` recipe is based on
 `int-image-minimal.bb` and restricted to `qemux86-64`. It selects
 `IMAGE_FEATURES += "package-management"`, which is intended to include target
-`rpm` and `dnf` and retain their package database, adds 256 MiB of extra
-rootfs space, and installs the test-only `int-feed-smoke` package. It contains
-no test repository, public key or probe package: those arrive only on the
-read-only fixture disk. The minimal image's locked-root policy remains in
-place; the image has no login credential and is not an installation image.
+`rpm` and `dnf` and retain their package database. It adds a test-only service
+and GnuPG; it does not include a repository, public key or probe package.
+The minimal image's locked-root policy remains in place. This experimental
+image has not yet been built or tested and is not an installation image.
 
-`int-feed-smoke` (`meta-int/recipes-test/int-feed-smoke`) installs a oneshot
-systemd service that writes to the serial console and powers the VM off in
-every outcome. It depends on `rpm`, `dnf`, `gnupg`, Python and the
-`util-linux` `blkid` and `mount` tools. It must never be added to the console
-or desktop images. In the locked OE source, `rootfs_rpm.bbclass` also adds
-100 MiB of extra rootfs space when DNF is installed; verify the actual image
-manifest, GnuPG package split and free space after building.
+When the current operation has finished, build it using the separate profile:
 
-## Guest test service
+```sh
+./scripts/int --profile feed build int-image-feed-smoke
+```
 
-Each boot runs exactly one case, selected by `int.feed_case=` on the kernel
-command line: `valid`, or one of the ten rejection cases `wrong-key-metadata`,
-`altered-repomd`, `missing-metadata-signature`, `missing-repo-key`,
-`wrong-configured-key`, `altered-primary`, `stale-rpm-checksum`,
-`unsigned-rpm`, `wrong-key-rpm` and `corrupt-rpm-indexed`. The service:
+This selects the isolated RPM Sequoia configuration and writes artifacts
+under `INT_WORKDIR/build-feed`, leaving the already validated image profiles
+untouched. A successful image build alone would not prove signature
+enforcement, a working feed, or a successful guest boot. In the locked OE
+source, `rootfs_rpm.bbclass` also adds 100 MiB of extra rootfs space when DNF
+is installed. Verify the actual image manifest and free space after building.
 
-1. Reads the expected full 40-digit primary fingerprint from `int.feed_fpr=`,
-   never from the fixture disk, and records RPM, DNF and GnuPG versions.
-2. Finds the disk labelled `INTFEED`, requires the kernel to report the block
-   device read-only, and mounts it with `ro,nosuid,nodev,noexec,noload`.
-3. Inspects `trusted-public-key.asc` under an isolated GnuPG home and accepts
-   it only if it contains exactly one valid, signing-capable primary key, no
-   subkeys and no secret material, with exactly the pinned fingerprint.
-4. Checks the RPM OpenPGP backend with isolated databases: `rpmkeys` with
-   `_pkgverify_level all` must report a valid signature on the v2 probe after
-   importing the pinned key, and must reject it with `NOKEY` from an empty
-   trust database.
-5. Requires that the system RPM database trusts no key and that the probe is
-   absent, then installs `int-feed-probe` 1.0 from `valid-v1` and requires
-   that the RPM database trusts exactly the pinned key.
-6. Runs the selected case:
-   - `valid`: refresh signed v2 metadata, upgrade to 2.0, then repeat the
-     upgrade and require `Nothing to do` with the same installed state.
-   - a rejection case: try to upgrade from the candidate directory and require
-     a nonzero DNF result, every expected diagnostic pattern for that case, an
-     unchanged installed version and version file, and an unchanged RPM trust
-     database. `missing-repo-key` omits `gpgkey`; `wrong-configured-key`
-     configures an unrelated public key generated inside the disposable guest.
+The test-only `int-feed-smoke` package depends on `dnf`, `rpm` and
+`gnupg-gpg`; verify the actual manifest and test dependencies rather than
+assuming this is sufficient.
 
-Every repository gets a fresh ID, configuration file, `reposdir` and cache.
-DNF runs with `-c` pointing at that configuration, `--disablerepo=*` plus the
-one test repository, `gpgcheck=1`, `repo_gpgcheck=1`, `localpkg_gpgcheck=1`,
-`skip_if_unavailable=0`, `plugins=0` and a `file://` base URL. The service
-refuses `--nogpgcheck`. Installed state is checked through both `rpm -q` and
-`/usr/share/int-feed-probe/version`.
+The test-only oneshot service runs as root on the serial console, then shuts
+down the disposable VM. It requires a read-only `/dev/vdb`, a single
+`int_feed_fingerprint=FULL_40_HEX` and `int_feed_case=success` on the kernel
+command line. It checks the independent pin before importing a key, installs
+version 1.0, updates to 2.0 and repeats the update, checking the RPM version
+and installed file each time. It emits ordered `INT_FEED_CHECK` markers, a
+single `INT_FEED_CASE:success:PASS`, and `INT_FEED_SHUTDOWN`; failures emit
+`INT_FEED_FAIL`. The service and its DNF commands are untested in an actual
+guest. Negative cases still need to be implemented and must never be inferred
+from the success path. Do not unlock root, install a reusable credential,
+enable a remote login, or include this test service in normal images.
 
-The guest emits `INT_FEED_BEGIN:CASE`, one `INT_FEED_CHECK:NAME:PASS` per
-completed check, bounded `INT_FEED_INFO` and `INT_FEED_DIAG` lines (exit codes,
-last 20 lines of each command, fingerprints and artifact hashes), and finally
-`INT_FEED_CASE:CASE:PASS` or `INT_FEED_FAIL:REASON`. It installs no
-credential, unlocks no account and opens no network service.
+Use a separate runner based on the existing `scripts/qemu-smoke.py` snapshot,
+kernel/manifest consistency, process timeout, strict marker and evidence
+mechanisms. `scripts/qemu-core-check.py` is the interactive owner-enrollment
+test; the proposed autonomous feed service does not need its login or sudo
+protocol. The runner must select the new image and its own assertion markers,
+not interpret a core or boot smoke pass as a feed pass. Keep QEMU's root disk
+on a temporary snapshot and hash the preserved input artifacts before and
+after each run. Disable guest networking for the file-only experiment.
 
-## Runner and transport
+The runner can construct a second, read-only virtual block disk from the
+prepared test repositories and public keys. `mke2fs -d` can populate an EXT4
+image without a privileged host mount; `mke2fs 1.47.0` is present in the
+current builder image. Bound the input and disk size, keep the generated disk
+outside the checkout, hash it, and attach it read-only as a second virtio
+device. The guest should identify that expected disk and mount it read-only
+with `nosuid,nodev,noexec`; it should not receive a host directory or a
+private signing key. The previously validated core kernel has
+`CONFIG_VIRTIO_BLK=y` and `CONFIG_EXT4_FS=y`; confirm those settings and the
+device naming in the actual feed-profile kernel before relying on them. Check
+the second disk's hash after the test as well.
 
-`scripts/qemu-feed-check.py` reuses the snapshot, process-timeout and evidence
-mechanisms of `scripts/qemu-smoke.py`. For each case it boots the feed image
-from a fresh copy-on-write root snapshot (`snapshot=on`) with `-nic none`, and
-attaches the fixture disk produced by `scripts/feed-disk.py` as a second
-virtio disk with `readonly=on`. Before the run it checks that the image
-manifest contains `rpm`, `dnf`, `gnupg`, `int-feed-smoke` and `python3-core`.
-Before and after each case it hashes `feed.ext4` and requires it to match both
-its `report.json` and the independently supplied `--feed-sha256`; it also
-rechecks the kernel and root snapshot hashes.
+## Trust and repository setup
 
-A case passes only if QEMU exits 0 within the timeout (default 1800 s per
-case), the guest emits exactly one `INT_FEED_BEGIN` for that case, exactly the
-expected ordered list of checks, one final `INT_FEED_CASE:CASE:PASS`, no
-`INT_FEED_FAIL` or kernel panic, and a clean power-down. A core or boot smoke
-pass is never interpreted as a feed pass.
+Prepare the RPMs, public keys, detached metadata signatures and separately
+indexed feed variants outside the image, using only the disposable lab key
+process in the signing plan. Never sign deployment artifacts in place. Verify
+and record the full expected primary fingerprint and public-key hash on the
+host. The runner must convey the expected identity independently of the
+repository contents and require the guest to confirm the full fingerprint
+before importing or trusting the key. Isolate GnuPG's home and reject extra,
+unexpected, expired or revoked primary keys. A guest comparing a key with a
+fingerprint supplied only by the same untrusted feed would not establish a
+pin. The pinned identity is a test input, not a production trust policy.
 
-## Procedure
+Use a dedicated DNF configuration and local `file://` base URLs. Explicitly
+disable all other repositories and set `gpgcheck=1`, `repo_gpgcheck=1`,
+`localpkg_gpgcheck=1` and `skip_if_unavailable=0`. Use separate repository IDs,
+caches and trust state for each case. Never pass `--nogpgcheck`: some generic
+OE DNF tests do so and therefore do not establish signature enforcement.
+Confirm DNF/librepo's actual metadata-key import and keyring locations in the
+guest; ensure automatic confirmation can import only the pinned public key.
 
-All steps happen under the separate `feed` profile, whose artifacts live under
-`INT_WORKDIR/build-feed`, leaving the validated image profiles untouched.
-Laboratory fixture keys expire one day after creation, so the fixtures, the
-disk and every VM case must be produced and run within that window; an
-expired key is correctly rejected by the guest and does not indicate a DNF
-defect.
+## Acceptance and rejection
 
-1. Build the image, then inspect its manifest and free space:
-
-   ```sh
-   ./scripts/int --profile feed build int-image-feed-smoke
-   ```
-
-2. Build the probe packages and generate a new fixture directory with the
-   native laboratory as described in [feed-probe.md](feed-probe.md) and
-   [feed-fixtures.md](feed-fixtures.md). Record the full primary fingerprint
-   from the host-side generation output before creating the disk.
-3. Create the fixture disk as described in [feed-disk.md](feed-disk.md), for
-   example under `INT_WORKDIR/feed-disks/NAME`, and record the `feed.ext4`
-   SHA-256 from that step.
-4. Run all eleven cases, or a subset with repeated `--case`, passing the disk
-   directory as seen inside the builder container:
-
-   ```sh
-   ./scripts/int --profile feed feed-check /work/feed-disks/NAME \
-     --fingerprint FPR --feed-sha256 SHA [--case NAME]...
-   ```
-
-Evidence is written to `INT_WORKDIR/evidence/qemu-feed-*/`: a top-level
-`result.json` with tool versions, input hashes, the pinned fingerprint and
-per-case outcomes, plus one directory per case with `serial.log` and
-`result.json`. Image copies are removed after the run; only their hashes are
-kept. Failed or incomplete runs remain evidence of failure and must not
-replace a known-good image. No private key enters the VM or the evidence.
-
-In this laboratory the fingerprint and disk hash come from the host-side
-generation steps, a channel separate from the disk contents. They are test
-inputs, not a production trust policy.
-
-## Acceptance and rejection criteria
-
-Successful path, against freshly prepared data:
+Run the successful path against freshly prepared data:
 
 1. Check the pinned key and signed metadata, then run `dnf makecache`.
 2. Install `int-feed-probe` version 1.0 from its signed feed. Check both
@@ -150,47 +100,74 @@ Successful path, against freshly prepared data:
    database and version file both report 2.0.
 4. Repeat the update and require success with the same installed state.
 
-Each negative case uses a fresh QEMU snapshot and isolated cache/trust setup.
-It first establishes version 1.0 from a valid feed, then tries the candidate
-feed and requires a nonzero DNF result, a relevant failure diagnostic and an
-unchanged installed version and file. The cases cover wrong or unknown
-metadata signer, altered or missing metadata signature, missing or wrong
-configured repository key, altered referenced metadata, a stale RPM checksum,
-and unsigned, wrong-key and corrupt RPMs whose metadata was regenerated and
-correctly signed so that the RPM signature check is actually reached. The
-empty RPM trust database case and a positive backend capability check run in
-every boot. The negative cases must reach the intended verification stage
-rather than pass because of an unrelated missing file, dependency, cache or
-network failure.
+Use a fresh QEMU snapshot and isolated cache/trust setup for each negative
+case. First establish version 1.0 from a valid feed, then try the candidate
+feed and require a nonzero DNF result, a relevant failure diagnostic and an
+unchanged installed version and file. Exercise wrong or unknown metadata
+signer, altered or missing metadata signature, altered referenced metadata,
+and altered RPM. For unsigned and wrong-key or modified RPM cases, regenerate
+and correctly sign the metadata around the candidate RPM: otherwise a stale
+metadata checksum can fail before RPM signature verification is reached.
+Include an empty RPM trust database case and an OpenPGP-disabled RPM backend
+capability check as described in the signing plan. Validate that the negative
+cases reach the intended verification stage rather than passing because of an
+unrelated missing file, dependency, cache or network failure.
 
 Record separate case outcomes, return codes, bounded diagnostics, tool
 versions, full verified fingerprints, artifact hashes and installed-state
 checks. Require one ordered set of exact guest markers, clean shutdown, and a
-successful QEMU exit for a passing run.
+successful QEMU exit for a passing run. Failed or incomplete runs remain
+evidence of failure and must not replace a known-good image. Keep temporary
+private keys out of the VM and retained evidence.
 
-## Known gaps
+## Diagnostics to confirm in the guest
 
-- No case exercises an OpenPGP-disabled RPM backend; only the positive
-  capability check and the empty-trust rejection are implemented.
-- The expected DNF diagnostics come from a host rehearsal with distribution
-  tools, not from OE's DNF; a pattern mismatch in the guest must be diagnosed
-  from the retained output, not relaxed blindly.
-- The one-day fixture key lifetime constrains when runs can happen.
-- Repository freshness and replay protection, key rotation, update
-  interruption recovery, network transport and production key custody remain
-  out of scope.
+The following expectations are derived from the locked source, not observed
+VM output. The access path, wrapper errors, locale and automatic key-import
+attempts can affect what DNF actually prints. Capture the complete bounded
+diagnostic and confirm the relevant stage in a real VM before fixing an
+assertion to a particular string. Set `LC_ALL=C` for test commands, and require
+a nonzero exit, the expected failure reason and unchanged RPM version and
+installed file. Use an independent positive control for the same operation,
+fresh cache and trust state for each case, and `skip_if_unavailable=0`.
+
+| Case | Source-derived diagnostic or behavior to investigate |
+| --- | --- |
+| Metadata signature missing | `librepo/yum.c` reports `GPG verification is enabled, but GPG signature ... not available`; the exact wording differs between the local-repository and download paths. |
+| Metadata signed by the wrong key or altered after signing | `librepo/yum.c` prefixes a failure with `repomd.xml GPG signature verification`; the GPGME backend can report `Bad GPG signature`. DNF may wrap or retry the error after importing the configured key. |
+| Referenced primary metadata altered | `librepo/yum.c` reports `Checksum mismatch` followed by the affected path when it reaches the checksum check. |
+| RPM changed after indexing | `libdnf/dnf-package.cpp` reports `Checksum mismatch in local repository` for a local package checksum mismatch; confirm the actual DNF path reaches this check. |
+| Unsigned RPM in freshly signed metadata | `dnf/base.py` can report `Package ... is not signed`, followed by `GPG check FAILED` from `dnf/cli/cli.py`. |
+| RPM signed by an untrusted key in freshly signed metadata | `dnf/base.py` detects a missing or untrusted public key; after the configured-key import attempt it may report that the repository keys are already installed but are not correct for the package. |
+| Corrupt RPM in freshly signed metadata | DNF's RPM output parser treats a `BAD` line as a fatal verification error, which can surface as a package-opening or GPG-check failure. Verify the reported cause and do not count an unrelated parse or missing-file failure as the intended rejection. |
+
+`dnf/rpm/miscutils.py` invokes `rpmkeys --checksig --verbose` with
+`_pkgverify_level signature` and `_pkgverify_flags 0x0`; this source path
+requires signatures rather than accepting a digest alone. The metadata and
+package keyrings are distinct, so importing the pinned package key into the
+RPM database does not itself establish metadata trust. Use correctly signed,
+freshly indexed metadata for the unsigned, wrong-key and corrupt RPM cases so
+that a stale repository checksum does not reject the fixture before the
+package check. No source inspection or synthetic test substitutes for proving
+the intended rejection path with the actual target tools.
+
+Source references: locked librepo `363cb70c6548be900832bc9b18ced3e7569da15a`
+(`librepo/yum.c`, `librepo/gpg_gpgme.c`), libdnf
+`d39573195e24b43687587a8d83b9f6ac274e2412` (`libdnf/dnf-package.cpp`), and
+DNF `e47634fbe3565d0580e89ec21adb7c1b308642ce` (`dnf/base.py`,
+`dnf/cli/cli.py`, `dnf/rpm/miscutils.py`).
 
 ## Points to confirm before implementation is considered validated
 
 - The feed-profile image builds with target Sequoia, DNF, suitable GnuPG
   dependencies and enough writable space; its kernel and disk device match the
-  runner's assumptions (`CONFIG_VIRTIO_BLK`, `CONFIG_EXT4_FS`, the fixture
-  disk appearing as a read-only `/dev/vdb`).
+  runner's assumptions.
 - `mke2fs -d`, the generated EXT4 features, the guest mount options and the
   read-only QEMU attachment work together in the actual test environment.
 - GnuPG reports the expected key identity under an isolated home, including
-  key validity. The runner's independent expected fingerprint reaches the
-  guest without allowing feed contents to define their own trust anchor.
+  signing-subkey relationships and key validity. The runner's independent
+  expected fingerprint reaches the guest without allowing feed contents to
+  define their own trust anchor.
 - DNF's metadata and RPM keyrings, `gpgkey` import, cache isolation, `file://`
   behavior and failure diagnostics behave as required in this pinned version.
 - Tests prove actual signature enforcement, not merely successful digest

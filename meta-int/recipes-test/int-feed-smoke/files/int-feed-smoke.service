@@ -1,6 +1,5 @@
 [Unit]
-Description=INT disposable signed-feed DNF test (QEMU only)
-After=local-fs.target
+Description=INT disposable local package feed test
 Before=serial-getty@ttyS0.service
 
 [Service]
@@ -10,9 +9,7 @@ StandardOutput=tty
 StandardError=tty
 TTYPath=/dev/ttyS0
 TTYReset=no
-TimeoutStartSec=1800
-# The script powers off itself; this covers a kill (timeout, OOM) that skips it.
-FailureAction=poweroff
+TimeoutStartSec=600
 
 [Install]
 WantedBy=multi-user.target

@@ -2,6 +2,8 @@
 import runpy
 import gzip
 import hashlib
+import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -16,6 +18,7 @@ MAX_RPM = MODULE["MAX_RPM"]
 verify_single_package_index = MODULE["verify_single_package_index"]
 expect_index_failure = MODULE["expect_index_failure"]
 validate_probe_files = MODULE["validate_probe_files"]
+invoke_rpm = MODULE["invoke_rpm"]
 
 
 class FixturePathsTest(unittest.TestCase):
@@ -76,13 +79,32 @@ class FixturePathsTest(unittest.TestCase):
     def test_probe_file_list_rejects_extra_paths_and_nonregular_version(self):
         directory = '/usr/share/int-feed-probe'
         file = directory + '/version'
+        validate_probe_files(f'/usr\t40755\n/usr/share\t40755\n{directory}\t40755\n{file}\t100644\n')
         validate_probe_files(f'{directory}\t40755\n{file}\t100644\n')
         validate_probe_files(f'{file}\t100644\n')
         for output in (f'{file}\t120777\n', f'{file}\t100644\n/etc/extra\t100644\n',
+                       f'/usr\t100644\n{file}\t100644\n',
                        f'{directory}\t40755\n', f'{file}\tinvalid\n',
                        f'{file}\t100644\n{file}\t100644\n'):
             with self.subTest(output=output), self.assertRaises(LabError):
                 validate_probe_files(output)
+
+    def test_rpm_tools_receive_only_the_isolated_database(self):
+        # The fake tool records the real subprocess arguments; it does not
+        # claim to verify signatures or replace the native integration test.
+        tool = self.root / 'fake-rpm'
+        tool.write_text('#!/usr/bin/python3\nimport json, sys\nprint(json.dumps(sys.argv[1:]))\n')
+        tool.chmod(0o700)
+        database = self.root / 'isolated-rpmdb'
+        for options in (('-qp', '--qf', '%{NAME}', 'probe.rpm'),
+                        ('--checksig', '--verbose', 'probe.rpm'),
+                        ('--addsign', 'probe.rpm'), ('--version',)):
+            with self.subTest(options=options):
+                result = invoke_rpm(tool, database, *options, env=os.environ.copy())
+                self.assertEqual(json.loads(result.stdout),
+                                 ['--define', f'_dbpath {database}', *options])
+        with self.assertRaises(LabError):
+            invoke_rpm(tool, Path('relative-rpmdb'), '--version', env=os.environ.copy())
 
     def test_primary_index_rejects_changed_package(self):
         repo = self.root / "repo"

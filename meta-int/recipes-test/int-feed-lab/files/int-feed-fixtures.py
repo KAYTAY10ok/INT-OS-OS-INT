@@ -70,10 +70,17 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def invoke_rpm(tool, database, *arguments, env, ok=True):
+    """Keep every RPM tool away from the host or default RPM database."""
+    require(Path(database).is_absolute(), "RPM database path must be absolute")
+    return invoke([tool, "--define", f"_dbpath {database}", *arguments], env=env, ok=ok)
+
+
 def validate_probe_files(output):
     """Reject extra paths or non-regular version markers in RPM file metadata."""
     directory = "/usr/share/int-feed-probe"
     version_file = directory + "/version"
+    allowed_directories = {"/usr", "/usr/share", directory}
     seen = set()
     for line in output.splitlines():
         fields = line.split("\t")
@@ -83,7 +90,7 @@ def validate_probe_files(output):
             file_mode = int(mode, 8)
         except ValueError as error:
             raise LabError("Invalid RPM file mode") from error
-        require((path == directory and stat.S_ISDIR(file_mode)) or
+        require((path in allowed_directories and stat.S_ISDIR(file_mode)) or
                 (path == version_file and stat.S_ISREG(file_mode)),
                 "Unexpected probe path or file type")
         seen.add(path)
@@ -201,25 +208,25 @@ def main():
             gpg(verify_home, "--import", public)
             rpmdb = root / "rpmdb"
             rpmdb.mkdir(mode=0o700)
-            invoke([tools["rpmkeys"], "--define", f"_dbpath {rpmdb}", "--import", public], env=env)
+            invoke_rpm(tools["rpmkeys"], rpmdb, "--import", public, env=env)
 
             unsigned = {}
             for version, data in inputs.items():
                 path = root / f"int-feed-probe-{version}-r0.noarch.rpm"
                 path.write_bytes(data)
-                query = invoke([tools["rpm"], "-qp", "--qf", "%{NAME}\\t%{VERSION}\\t%{RELEASE}\\t%{ARCH}\\n", path], env=env)
+                query = invoke_rpm(tools["rpm"], rpmdb, "-qp", "--qf", "%{NAME}\\t%{VERSION}\\t%{RELEASE}\\t%{ARCH}\\n", path, env=env)
                 require(query.stdout == f"int-feed-probe\t{version}\tr0\tnoarch\n", f"Unexpected RPM identity: {query.stdout}")
-                scripts = invoke([tools["rpm"], "-qp", "--scripts", "--triggers", "--filetriggers", path], env=env)
+                scripts = invoke_rpm(tools["rpm"], rpmdb, "-qp", "--scripts", "--triggers", "--filetriggers", path, env=env)
                 require(not scripts.stdout.strip(), "Probe unexpectedly has scriptlets or triggers")
-                files = invoke([tools["rpm"], "-qp", "--qf",
-                                "[%{FILENAMES}\\t%{FILEMODES:octal}\\n]", path], env=env)
+                files = invoke_rpm(tools["rpm"], rpmdb, "-qp", "--qf",
+                                   "[%{FILENAMES}\\t%{FILEMODES:octal}\\n]", path, env=env)
                 validate_probe_files(files.stdout)
-                check = invoke([tools["rpmkeys"], "--checksig", "--verbose", path], env=env)
+                check = invoke_rpm(tools["rpmkeys"], rpmdb, "--checksig", "--verbose", path, env=env)
                 require(not re.search(r"\bsignature\b", check.stdout, re.I) and
                         re.search(r"\bdigest\b.*:\s*OK\s*$", check.stdout, re.I | re.M),
                         "Input probe must be unsigned and have valid digests")
-                check = invoke([tools["rpmkeys"], "--define", f"_dbpath {rpmdb}", "--define",
-                                "_pkgverify_level all", "--checksig", "--verbose", path], env=env, ok=False)
+                check = invoke_rpm(tools["rpmkeys"], rpmdb, "--define", "_pkgverify_level all",
+                                   "--checksig", "--verbose", path, env=env, ok=False)
                 require(check.returncode != 0 and
                         re.search(r"\bsignature\b.*:\s*NOTFOUND\s*$", check.stdout, re.I | re.M),
                         "Unsigned input did not fail the strict signature check")
@@ -229,10 +236,10 @@ def main():
                 target = root / name
                 shutil.copyfile(source, target)
                 signing_env = dict(env, GNUPGHOME=str(home))
-                invoke([tools["rpmsign"], "--define", f"_gpg_name {fpr}",
+                invoke_rpm(tools["rpmsign"], rpmdb, "--define", f"_gpg_name {fpr}",
                         "--define", f"_gpg_path {home}", "--define", f"__gpg {tools['gpg']}",
                         "--define", "_gpg_digest_algo sha256", "--define",
-                        "_gpg_sign_cmd_extra_args --batch --pinentry-mode loopback", "--addsign", target],
+                        "_gpg_sign_cmd_extra_args --batch --pinentry-mode loopback", "--addsign", target,
                        env=signing_env)
                 return target
 
@@ -240,11 +247,11 @@ def main():
             signed_v2 = sign_rpm(unsigned["2.0"], "signed-v2.rpm", trusted_home, fingerprint)
             wrong_v2 = sign_rpm(unsigned["2.0"], "wrong-v2.rpm", wrong_home, wrong_fingerprint)
             for signed in (signed_v1, signed_v2):
-                check = invoke([tools["rpmkeys"], "--define", f"_dbpath {rpmdb}", "--define",
-                                "_pkgverify_level all", "--checksig", "--verbose", signed], env=env)
+                check = invoke_rpm(tools["rpmkeys"], rpmdb, "--define", "_pkgverify_level all",
+                                   "--checksig", "--verbose", signed, env=env)
                 require(signature_ok(check.stdout), f"No successful RPM signature: {check.stdout}")
-            check = invoke([tools["rpmkeys"], "--define", f"_dbpath {rpmdb}", "--define",
-                            "_pkgverify_level all", "--checksig", "--verbose", wrong_v2], env=env, ok=False)
+            check = invoke_rpm(tools["rpmkeys"], rpmdb, "--define", "_pkgverify_level all",
+                               "--checksig", "--verbose", wrong_v2, env=env, ok=False)
             require(check.returncode != 0 and "NOKEY" in check.stdout.upper() and
                     not signature_ok(check.stdout), "Wrong-key RPM did not fail as expected")
 
@@ -255,8 +262,8 @@ def main():
                 byte = stream.read(1)
                 stream.seek(-1, os.SEEK_END)
                 stream.write(bytes([byte[0] ^ 1]))
-            check = invoke([tools["rpmkeys"], "--define", f"_dbpath {rpmdb}", "--define",
-                            "_pkgverify_level all", "--checksig", "--verbose", corrupt], env=env, ok=False)
+            check = invoke_rpm(tools["rpmkeys"], rpmdb, "--define", "_pkgverify_level all",
+                               "--checksig", "--verbose", corrupt, env=env, ok=False)
             require(check.returncode != 0 and re.search(r"\bdigest\b.*:\s*BAD(?:\s|$)", check.stdout, re.I | re.M),
                     "Corrupt RPM did not fail its digest check")
 
@@ -333,7 +340,8 @@ def main():
                     require(len(data) == size, "Output file changed during hashing")
                     files[str(path.relative_to(output))] = {"sha256": sha(data), "bytes": len(data)}
             versions = {name: invoke([tools[name], "--version"], env=env).stdout.splitlines()[0]
-                        for name in ("gpg", "rpmkeys", "createrepo_c")}
+                        for name in ("gpg", "createrepo_c")}
+            versions["rpmkeys"] = invoke_rpm(tools["rpmkeys"], rpmdb, "--version", env=env).stdout.splitlines()[0]
             report = {"scope": "generated laboratory fixtures only; DNF and target runtime not tested",
                       "signing_primary_fingerprint": fingerprint, "key_expiration": "1 day from creation",
                       "input_sha256": {version: sha(data) for version, data in inputs.items()},
