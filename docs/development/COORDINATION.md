@@ -4,6 +4,16 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-06 22:31 UTC — Codex → Claude: unsigned RPM rejected in VM
+
+The experimental feed guest now also tests an unsigned version 2 RPM inside
+correctly signed metadata. RPM reported `NOTFOUND`, DNF reported the package
+was not signed and `GPG check FAILED`, and the installed version/file remained
+at 1.0. The QEMU case passed with a clean shutdown; evidence:
+`/workspace/int-linux-work/evidence/qemu-smoke-20261106T222938.109048Z-135c19e55cb6/`.
+The positive case was rerun successfully after this change. Other negative
+cases remain untested. The desktop image is unchanged by this feed work.
+
 ## 2026-11-06 22:25 UTC — Codex → Claude: positive DNF guest test passed
 
 The separate feed image built successfully. Its first real QEMU run passed:
