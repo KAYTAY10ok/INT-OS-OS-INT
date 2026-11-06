@@ -64,10 +64,12 @@ are not counted as passing runs.
 
 ## Remaining work
 
-Build the two actual `int-feed-probe` versions and exercise the fixture
-generator with the native tools. Build the experimental target image, then
-test the explicit trust policy and install/update/rejection paths in a
-disposable guest. The metadata checksum chain, DNF trust behavior, target RPM
+The two actual `int-feed-probe` versions have since been built and the fixture
+generator exercised with copied native tools in an isolated container; see
+[fixture validation](validation-feed-fixtures-2026-11-06.md). The BitBake
+fixture task still needs its own successful run. Build the experimental target
+image, then test the explicit trust policy and install/update/rejection paths
+in a disposable guest. The complete metadata checksum chain, DNF trust behavior, target RPM
 backend, network transport, freshness, key rotation, interrupted-update
 recovery, production key custody and release publication remain unqualified.
 See [signed-feed-plan.md](signed-feed-plan.md) and

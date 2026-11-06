@@ -22,6 +22,11 @@ read-only on the host, but a future QEMU runner must also explicitly attach
 it read-only and verify the expected hash before and after use. The future
 guest must independently pin the expected full signing-key fingerprint.
 
+An EXT4 image has since been created from the actual isolated fixture run;
+the [validation record](validation-feed-fixtures-2026-11-06.md) lists its
+path, hashes and short-lived public-key fingerprint. Its creation does not
+establish QEMU boot, DNF behavior or target signature enforcement.
+
 Host-only tests cover manifest/path checks. On hosts with both `mke2fs` and
 `debugfs`, they also construct a synthetic EXT4 image and inspect a file within
 it. No guest or signed-feed result is claimed by these tests.

@@ -47,8 +47,13 @@ inspecte leur provenance avant de les modifier ou de les ajouter.
   détachée `repomd.xml`, ainsi que leurs cas négatifs natifs. Les dix cas
   passent dans `/workspace/int-linux-work/feed-lab-20261106-retry2.log` ; voir
   [validation native](validation-feed-native-2026-11-06.md). Cela ne valide
-  pas DNF, RPM cible ni l'ensemble des sommes de métadonnées. Le générateur de
-  fixtures reste à exécuter avec les vrais outils natifs.
+  pas DNF, RPM cible ni l'ensemble des sommes de métadonnées.
+- Le générateur de fixtures a ensuite réussi avec de vrais outils natifs
+  copiés dans un conteneur isolé. Son manifeste, son journal, le disque EXT4
+  préparé et leurs empreintes sont dans la
+  [validation des fixtures](validation-feed-fixtures-2026-11-06.md). La clé
+  jetable expire le 7 novembre 2026 à 13:19:05 UTC ; utilise une nouvelle clé
+  si nécessaire. Cet essai direct ne valide pas la tâche BitBake ni DNF.
 - `int-feed-probe` existe en versions `1.0` et `2.0`, et
   `int-image-feed-smoke` existe comme recette expérimentale. Aucune installation
   ni mise à jour DNF en VM n'a encore été démontrée à cette date. Un service
@@ -123,15 +128,17 @@ pris au hasard dans plusieurs répertoires.
 
 ## Lot 2 — fixtures et image expérimentale
 
-1. Construis séparément les deux versions de `int-feed-probe` et copie les RPM
-   non signés avant que la seconde construction puisse modifier le répertoire
-   de déploiement. Suis exactement [feed-probe.md](feed-probe.md), dans le
-   shell du profil `feed` et une fois le verrou libre.
-2. Exécute ensuite la tâche optionnelle `create_feed_fixtures` conformément à
+1. Les deux versions de `int-feed-probe` ont été construites et copiées pour
+   l'essai isolé. Pour les régénérer, construis-les séparément et copie le
+   premier RPM avant que la seconde construction puisse modifier le répertoire
+   de déploiement ; suis [feed-probe.md](feed-probe.md), dans le shell du profil
+   `feed` et une fois le verrou libre.
+2. Exécute la tâche optionnelle `create_feed_fixtures` conformément à
    [feed-fixtures.md](feed-fixtures.md). Elle signe des copies, crée des
    variantes positives et négatives et produit son manifeste uniquement après
    nettoyage ordinaire des clés temporaires. Vérifie réellement la sortie ;
-   une génération interrompue sans manifeste n'est pas un succès. Un arrêt
+   une génération interrompue sans manifeste n'est pas un succès. Le succès
+   direct dans le conteneur isolé ne valide pas encore cette tâche BitBake. Un arrêt
    brutal peut laisser des clés jetables sous `/tmp` : inspecte avant tout
    nettoyage ciblé, et ne prétends pas à un effacement sécurisé.
 3. Construis l'image expérimentale avec

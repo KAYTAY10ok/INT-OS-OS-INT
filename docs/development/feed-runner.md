@@ -13,9 +13,12 @@ message, QEMU exit status zero and unchanged input and snapshot hashes. The
 runner rejects absent, duplicate, out-of-order or unknown feed markers,
 failure messages, panics, timeouts, excessive serial output and input changes.
 
-Once the image, signed fixtures and `feed.ext4` are prepared, and no other INT
-operation is running, use `./scripts/int --profile feed shell`. Inside the
-shell, replace the uppercase placeholders with the independently recorded
+An isolated run has prepared signed fixtures and an EXT4 disk; its
+[validation record](validation-feed-fixtures-2026-11-06.md) gives the
+independently recorded fingerprint, disk hash and key expiry. Once the image
+is built and no other INT operation is running, use
+`./scripts/int --profile feed shell`. Inside the shell, replace the uppercase
+placeholders with the independently recorded
 fingerprint and disk hash, without taking the fingerprint solely from the disk:
 
 ```sh
