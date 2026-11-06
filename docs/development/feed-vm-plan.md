@@ -1,9 +1,14 @@
 # Isolated DNF feed VM: proposed test plan
 
-Status: an experimental image recipe and a guest helper for the positive
-`success` case exist, but have not yet been built or booted. No DNF feed,
-installation, update or rejection test has been run. The existing core and
-desktop image validations do not qualify this plan.
+Status: the experimental image and guest helper have passed a positive local
+DNF install/update test and separate unsigned-package, wrong-key package and
+missing metadata signature rejection tests in QEMU; see
+[positive validation](validation-feed-vm-2026-11-06.md),
+[unsigned-package validation](validation-feed-unsigned-vm-2026-11-06.md) and
+[wrong-key validation](validation-feed-wrong-key-vm-2026-11-06.md), and
+[missing-signature validation](validation-feed-missing-signature-vm-2026-11-06.md).
+Other DNF rejection cases have not yet been run. The existing core and desktop
+image validations do not qualify this plan.
 The prerequisites, signing limitations and complete negative-case rationale
 are in [signed-feed-plan.md](signed-feed-plan.md). The two small probe recipes
 and their proposed build procedure are described in [feed-probe.md](feed-probe.md).
@@ -16,7 +21,7 @@ The separate `int-image-feed-smoke` recipe is based on
 `rpm` and `dnf` and retain their package database. It adds a test-only service
 and GnuPG; it does not include a repository, public key or probe package.
 The minimal image's locked-root policy remains in place. This experimental
-image has not yet been built or tested and is not an installation image.
+image passed the positive QEMU test and is not an installation image.
 
 When the current operation has finished, build it using the separate profile:
 
@@ -31,20 +36,27 @@ enforcement, a working feed, or a successful guest boot. In the locked OE
 source, `rootfs_rpm.bbclass` also adds 100 MiB of extra rootfs space when DNF
 is installed. Verify the actual image manifest and free space after building.
 
-The test-only `int-feed-smoke` package depends on `dnf`, `rpm` and
+The test-only `int-feed-smoke` package depends on `dnf`, `rpm`, `gnupg` and
 `gnupg-gpg`; verify the actual manifest and test dependencies rather than
 assuming this is sufficient.
 
 The test-only oneshot service runs as root on the serial console, then shuts
 down the disposable VM. It requires a read-only `/dev/vdb`, a single
-`int_feed_fingerprint=FULL_40_HEX` and `int_feed_case=success` on the kernel
-command line. It checks the independent pin before importing a key, installs
+`int_feed_fingerprint=FULL_40_HEX` and an `int_feed_case` of `success`,
+`unsigned-rpm`, `wrong-key-rpm` or `missing-metadata-signature` on the kernel
+command line. It checks the independent pin
+before importing a key, installs
 version 1.0, updates to 2.0 and repeats the update, checking the RPM version
 and installed file each time. It emits ordered `INT_FEED_CHECK` markers, a
 single `INT_FEED_CASE:success:PASS`, and `INT_FEED_SHUTDOWN`; failures emit
-`INT_FEED_FAIL`. The service and its DNF commands are untested in an actual
-guest. Negative cases still need to be implemented and must never be inferred
-from the success path. Do not unlock root, install a reusable credential,
+`INT_FEED_FAIL`. The service and its positive DNF commands were tested in the
+guest. For the separate unsigned and wrong-key cases it checks signed metadata
+and candidate, requires strict `rpmkeys` and DNF rejection, and confirms
+version 1.0 remains installed. The wrong-key case also verifies a trusted RPM
+as a positive `rpmkeys` control. The missing-signature case checks a valid
+signed metadata control, then requires DNF to refuse the absent detached
+signature and confirms version 1.0 remains installed. Other negative cases still need to be implemented and
+must never be inferred from the success path. Do not unlock root, install a reusable credential,
 enable a remote login, or include this test service in normal images.
 
 Use a separate runner based on the existing `scripts/qemu-smoke.py` snapshot,

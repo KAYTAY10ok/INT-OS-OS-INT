@@ -6,7 +6,8 @@ S = "${UNPACKDIR}"
 inherit allarch systemd
 SYSTEMD_SERVICE:${PN} = "int-feed-smoke.service"
 SYSTEMD_AUTO_ENABLE = "enable"
-RDEPENDS:${PN} = "dnf rpm gnupg-gpg"
+# GPGME needs gpgconf from gnupg as well as gpg from gnupg-gpg.
+RDEPENDS:${PN} = "dnf rpm gnupg gnupg-gpg"
 do_install() {
     install -Dm0755 ${S}/int-feed-smoke ${D}${libexecdir}/int-feed-smoke
     install -Dm0755 ${S}/int-feed-keycheck ${D}${libexecdir}/int-feed-keycheck

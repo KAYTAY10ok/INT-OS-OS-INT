@@ -48,12 +48,29 @@ manifest; they do not authenticate the manifest or the signing key. A guest
 runner must receive the expected fingerprint independently of this disk,
 attach it read-only, and verify the image hash before and after use.
 
-The successful isolated generator run exercises native signatures and its
-own index checks, not the BitBake task wrapper, guest behavior, DNF signature
-enforcement, target RPM backend, package update, or the entire metadata
-checksum chain. Those still require separate tests. The initial BitBake task
-attempt failed before generating fixtures due to an implicit RPM database;
-the generator now uses an explicit isolated database. A later BitBake task
-run remains necessary to validate that execution route. See
-[feed-fixtures.md](feed-fixtures.md), [feed-disk.md](feed-disk.md) and
-[feed-vm-plan.md](feed-vm-plan.md).
+## BitBake task retry
+
+The initial `create_feed_fixtures` BitBake task failed before generating
+fixtures because an RPM command tried to use an implicit database. After the
+generator was corrected to use an isolated RPM database, the task completed
+successfully: 881 tasks were attempted, 877 already up to date. The retained
+log is `/workspace/int-linux-work/create-feed-fixtures-retry-20261106.log`,
+SHA-256 `b1e74b736785569796d6fa4531477ba196a99a9c653a5d788b5702443d6b5b28`.
+
+This second run produced a distinct set of 60 public fixture files under
+`/workspace/int-linux-work/feed-fixtures/bitbake-20261106T222559Z/`; its
+`manifest.json` SHA-256 is
+`2cc48c3f120a10df20d9759b4725b1ff05a6d68c71572f52a60b02871bb56b41`.
+Its disposable primary fingerprint is
+`B196F513560A083034E3C61E2A82093247C6C3A2`; the test key expires one day
+after creation. The manifest records RPM 4.20.1, GnuPG 2.5.17 and
+createrepo_c 1.2.3. These are laboratory fixtures, not production trust
+material.
+
+The earlier **isolated** fixtures and disk described above—not this second
+BitBake-generated set—were later used for the positive DNF guest test; see
+[validation-feed-vm-2026-11-06.md](validation-feed-vm-2026-11-06.md). Neither
+generator run alone establishes a complete metadata audit or negative DNF
+signature enforcement. The task run does not establish the behavior of its
+second fixture set in the guest. See [feed-fixtures.md](feed-fixtures.md),
+[feed-disk.md](feed-disk.md) and [feed-vm-plan.md](feed-vm-plan.md).

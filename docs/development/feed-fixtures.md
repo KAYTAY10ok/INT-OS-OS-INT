@@ -1,12 +1,14 @@
 # Disposable signed-feed fixtures
 
 `int-feed-lab-native` has an explicit `create_feed_fixtures` task for preparing
-artifacts for the proposed isolated VM experiment. The generator has been
-executed successfully with copied OE native tools in a separate container;
-the `create_feed_fixtures` BitBake task has not yet succeeded. See the
-[isolated validation](validation-feed-fixtures-2026-11-06.md) for paths,
-hashes and limits. The output is not evidence that DNF or the guest accepts
-or rejects it, a release signing system, or a production repository.
+artifacts for the isolated VM experiment. The generator succeeded with copied
+OE native tools in a separate container, and a later `create_feed_fixtures`
+BitBake task also succeeded. See the
+[fixture validation](validation-feed-fixtures-2026-11-06.md) for paths,
+hashes and limits. A positive QEMU DNF run used the earlier isolated fixture
+set; it did not use the later BitBake-generated fixtures and does not prove
+negative rejection. This is not a release signing system or production
+repository.
 
 First build and copy both unsigned `int-feed-probe` RPMs as described in
 [feed-probe.md](feed-probe.md). Wait for all other INT build operations to
@@ -68,8 +70,8 @@ that the two stale-checksum variants fail at their intended checks, and checks
 selected signatures with the native tools. It does not
 perform a complete metadata audit, a DNF transaction or a target runtime test.
 In particular, refreshing the metadata around negative RPMs is intended to
-allow a guest to reach the package check; only the future guest test can prove
-that DNF actually reaches and rejects it for the intended reason.
+allow a guest to reach the package check; only future negative guest tests can
+prove that DNF actually reaches and rejects it for the intended reason.
 
 Keys use an unmistakable laboratory identity, are unprotected and expire one
 day after creation. The helper stops its GnuPG agents and removes temporary
