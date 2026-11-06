@@ -7,7 +7,7 @@ S = "${UNPACKDIR}"
 inherit allarch systemd
 SYSTEMD_SERVICE:${PN} = "int-feed-smoke.service"
 SYSTEMD_AUTO_ENABLE = "enable"
-RDEPENDS:${PN} = "python3-core python3-io python3-shell python3-crypt rpm dnf gnupg util-linux-blkid util-linux-mount"
+RDEPENDS:${PN} = "python3-core python3-io python3-shell python3-crypt rpm dnf gnupg gnupg-gpg util-linux-blkid util-linux-mount"
 do_install() {
     install -Dm0755 ${S}/int-feed-smoke ${D}${libexecdir}/int-feed-smoke
     install -Dm0644 ${S}/int-feed-smoke.service ${D}${systemd_system_unitdir}/int-feed-smoke.service

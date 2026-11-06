@@ -40,7 +40,7 @@ NEGATIVE = COMMON + ("rejected", "installed-unchanged", "trust-unchanged")
 CASES = ("valid", "wrong-key-metadata", "altered-repomd", "missing-metadata-signature",
          "missing-repo-key", "wrong-configured-key", "altered-primary", "stale-rpm-checksum",
          "unsigned-rpm", "wrong-key-rpm", "corrupt-rpm-indexed")
-REQUIRED_PACKAGES = ("rpm", "dnf", "gnupg", "int-feed-smoke", "python3-core")
+REQUIRED_PACKAGES = ("rpm", "dnf", "gnupg", "gnupg-gpg", "int-feed-smoke", "python3-core")
 DEFAULT_TIMEOUT = 1800.0
 FINGERPRINT = re.compile(r"[0-9A-F]{40}\Z")
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -61,7 +61,9 @@ def analyze_log(serial: str, process: dict, case: str) -> dict:
         reasons.append(f"runner interrupted by signal {process['interrupted_signal']}")
     if process.get("returncode") != 0:
         reasons.append(f"QEMU returned {process.get('returncode')!r}, expected 0")
-    if any(line.startswith("INT_FEED_FAIL") for line in lines):
+    # Anywhere, not only at a line start: a kernel message can split a line.
+    # The guest defangs echoed tool text, so only its own marker matches.
+    if "INT_FEED_FAIL" in serial:
         reasons.append("guest emitted INT_FEED_FAIL")
     if re.search(r"kernel panic|panic - not syncing", serial, re.IGNORECASE):
         reasons.append("kernel panic observed")

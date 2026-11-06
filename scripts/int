@@ -164,14 +164,23 @@ exec "$@"
     docker([*args, IMAGE, "bash", "-ec", script, "int", *command])
 
 
-def main():
+def parse_arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=["core", "desktop", "feed"], default="core")
     parser.add_argument("command", choices=["bootstrap", "builder", "configure", "build", "shell", "check", "smoke", "core-check", "desktop-check", "graphics-check", "feed-check"])
-    parser.add_argument("target", nargs="?")
-    parser.add_argument("extra", nargs=argparse.REMAINDER,
-                        help="feed-check only: runner options after the fixture disk directory")
-    args = parser.parse_args()
+    parser.add_argument("target", nargs="?",
+                        help="build target; for feed-check, the fixture disk directory followed by runner options")
+    # Not argparse.REMAINDER: it would also swallow "--profile" given after the
+    # command, silently selecting the default profile for every other command.
+    args, extra = parser.parse_known_args(argv)
+    if extra and args.command != "feed-check":
+        parser.error("unrecognized arguments: " + " ".join(extra))
+    args.extra = extra
+    return args
+
+
+def main():
+    args = parse_arguments()
     work = workdir()
     work.mkdir(parents=True, exist_ok=True)
     with operation_lock(work):

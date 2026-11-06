@@ -11,6 +11,8 @@ StandardError=tty
 TTYPath=/dev/ttyS0
 TTYReset=no
 TimeoutStartSec=1800
+# The script powers off itself; this covers a kill (timeout, OOM) that skips it.
+FailureAction=poweroff
 
 [Install]
 WantedBy=multi-user.target

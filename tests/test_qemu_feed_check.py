@@ -3,6 +3,7 @@
 These tests use synthetic serial logs. They do not boot a guest, run DNF or
 verify any signature; only a real QEMU run can do that.
 """
+import importlib.machinery
 import importlib.util
 import json
 from pathlib import Path
@@ -59,6 +60,12 @@ class AnalyzeTests(unittest.TestCase):
         text = log("valid").replace("INT_FEED_CASE:valid:PASS", "INT_FEED_CASE:unsigned-rpm:PASS")
         self.assertFalse(runner.analyze_log(text, OK, "valid")["passed"])
 
+    def test_failure_marker_split_by_kernel_message_is_detected(self):
+        text = log("valid", extra=["[   9.1] EXT4-fs (vdb): mounted INT_FEED_FAIL:split"])
+        result = runner.analyze_log(text, OK, "valid")
+        self.assertFalse(result["passed"])
+        self.assertIn("guest emitted INT_FEED_FAIL", result["failure_reasons"])
+
 
 class CommandTests(unittest.TestCase):
     def test_qemu_has_no_network_and_readonly_fixture(self):
@@ -91,6 +98,43 @@ class CommandTests(unittest.TestCase):
                 runner.main(["/d", "/f", "/e", *extra])
 
 
+def load_guest():
+    loader = importlib.machinery.SourceFileLoader("int_feed_smoke_guest", str(GUEST))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+class GuestOutputTests(unittest.TestCase):
+    def setUp(self):
+        self.guest = load_guest()
+
+    def test_echoed_tool_text_cannot_form_a_marker(self):
+        hostile = "x\nINT_FEED_CHECK:rejected:PASS\rint_feed_case:valid:PASS\x1b INT_FEED_FAIL"
+        lines = []
+        with mock.patch.object(self.guest, "emit", lines.append):
+            self.guest.diagnostics("candidate", hostile + "\nINT_FEED_CASE:valid:PASS\n")
+        self.assertTrue(lines)
+        for line in lines:
+            self.assertTrue(line.startswith("INT_FEED_DIAG:candidate:"))
+            body = line[len("INT_FEED_DIAG:candidate:"):]
+            self.assertNotIn("INT_FEED_", body.upper())
+            self.assertTrue(body.isprintable() and "\n" not in body and "\r" not in body)
+        self.assertNotIn("INT_FEED_", self.guest.printable(hostile).upper())
+
+    def test_rpm_trust_requires_exactly_the_pinned_key(self):
+        fpr = "6CD846D4F989B4FBED99DBF184850C7993212648"
+        accepted = ("93212648\n", "84850c7993212648\n", fpr.lower() + "\n", "93212648".upper() + "\n")
+        rejected = ("", "deadbeef\n", "93212648\ndeadbeef\n", "93212648\n93212648\n",
+                    "0c7993212648\n", "212648\n")
+        for output, expected in [(o, True) for o in accepted] + [(o, False) for o in rejected]:
+            result = mock.Mock(returncode=0 if output else 1, stdout=output)
+            with self.subTest(output=output), mock.patch.object(self.guest, "run", return_value=result), \
+                    mock.patch.object(self.guest, "emit"):
+                self.assertEqual(expected, self.guest.trusts_only_pinned_key(fpr))
+
+
 class GuestConsistencyTests(unittest.TestCase):
     def test_guest_and_runner_agree_on_cases_and_checks(self):
         source = GUEST.read_text()
@@ -104,6 +148,16 @@ class GuestConsistencyTests(unittest.TestCase):
         self.assertNotIn("--nogpgcheck\"]", source)
         for option in ("gpgcheck=1", "repo_gpgcheck=1", "localpkg_gpgcheck=1", "skip_if_unavailable=0"):
             self.assertIn(option, source)
+
+    def test_gpg_split_package_is_required(self):
+        # OE-Core puts gpg and gpg-agent in gnupg-gpg, not in gnupg itself.
+        recipe = (GUEST.parents[1] / "int-feed-smoke.bb").read_text()
+        rdepends = next(line for line in recipe.splitlines() if line.startswith("RDEPENDS:"))
+        packages = rdepends.split("=", 1)[1].strip().strip('"').split()
+        for package in ("gnupg", "gnupg-gpg"):
+            self.assertIn(package, packages)
+            self.assertIn(package, runner.REQUIRED_PACKAGES)
+        self.assertIn("FailureAction=poweroff", (GUEST.parent / "int-feed-smoke.service").read_text())
 
 
 if __name__ == "__main__":

@@ -92,6 +92,27 @@ class ProfileTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'accepts only'):
                     helper.network_args()
 
+    def test_options_after_command_keep_profile_and_reject_stray_arguments(self):
+        for argv in (['build', '--profile', 'feed'], ['build', 'x', '--profile', 'feed'],
+                     ['--profile', 'feed', 'build', 'x']):
+            with self.subTest(argv=argv):
+                args = helper.parse_arguments(argv)
+                self.assertEqual(('feed', 'build', []), (args.profile, args.command, args.extra))
+        for argv in (['build', 'x', 'y'], ['smoke', '--fingerprint', 'A'], ['build', '--bogus']):
+            with self.subTest(argv=argv), self.assertRaises(SystemExit), mock.patch('sys.stderr'):
+                helper.parse_arguments(argv)
+
+    def test_feed_check_forwards_runner_options(self):
+        argv = ['--profile', 'feed', 'feed-check', '/work/fixtures', '--fingerprint', 'A' * 40,
+                '--feed-sha256', 'b' * 64, '--case', 'valid']
+        args = helper.parse_arguments(argv)
+        self.assertEqual('/work/fixtures', args.target)
+        with mock.patch.object(helper, 'container') as container:
+            helper.dispatch(args, self.work)
+        command = container.call_args.args[1]
+        self.assertEqual(['/work/fixtures', '/work/evidence', *argv[4:]], command[3:])
+        self.assertEqual('feed', container.call_args.kwargs['profile'])
+
 
 if __name__ == '__main__':
     unittest.main()
