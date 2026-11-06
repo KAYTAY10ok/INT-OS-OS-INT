@@ -65,7 +65,14 @@ def require(condition, message):
 
 
 def printable(text):
-    return "".join(c if 32 <= ord(c) < 127 else "?" for c in text)[:240]
+    """Make tool or feed text one inert console line.
+
+    Control characters cannot start a new line, and the marker prefix is
+    defanged so that a console line split (for example by a kernel message)
+    can never turn echoed text into an INT_FEED_CHECK/CASE/FAIL marker.
+    """
+    line = "".join(c if 32 <= ord(c) < 127 else "?" for c in text)
+    return re.sub("INT_FEED_", "INT-FEED-", line, flags=re.I)[:240]
 
 
 def diagnostics(label, output):
@@ -211,16 +218,28 @@ def installed():
 
 def expect_installed(version, label):
     state = installed()
-    emit(f"INT_FEED_INFO:installed-{label}:{state[0]}:{printable(repr(state[1]))}")
+    emit(f"INT_FEED_INFO:installed-{label}:{printable(str(state[0]))}:{printable(repr(state[1]))}")
     require(state == (f"{version}-r0", f"{version}\n"), f"installed state is {state}, expected {version}")
     check(f"installed-{label}")
 
 
-def trusted_rpm_keys(fingerprint):
+def trusted_rpm_keys():
     query = run(["rpm", "-q", "--qf", "%{VERSION}\\n", "gpg-pubkey"])
-    keys = query.stdout.split() if query.returncode == 0 else []
-    emit(f"INT_FEED_INFO:rpm-gpg-pubkeys:{','.join(keys) or 'none'}")
+    keys = [key.lower() for key in query.stdout.split()] if query.returncode == 0 else []
+    emit(f"INT_FEED_INFO:rpm-gpg-pubkeys:{printable(','.join(keys)) or 'none'}")
     return keys
+
+
+def trusts_only_pinned_key(fingerprint):
+    """True if the RPM database holds exactly one key, the pinned one.
+
+    The gpg-pubkey VERSION has historically been the 8-digit short key ID;
+    newer RPM releases may use the 16-digit key ID or the full fingerprint.
+    Accept only those representations of the pinned fingerprint.
+    """
+    keys = trusted_rpm_keys()
+    pinned = fingerprint.lower()
+    return len(keys) == 1 and keys[0] in (pinned[-8:], pinned[-16:], pinned)
 
 
 def wrong_public_key(trust):
@@ -249,7 +268,7 @@ def main():
     trust = Path(tempfile.mkdtemp(prefix="int-feed-trust-", dir="/run"))
     key = pin_key(trust, fingerprint)
     rpm_backend(trust, key)
-    require(trusted_rpm_keys(fingerprint) == [], "system RPM database already trusts a key")
+    require(trusted_rpm_keys() == [], "system RPM database already trusts a key")
     require(installed()[0] is None and not VERSION_FILE.exists(), "probe unexpectedly preinstalled")
     check("clean-initial-state")
 
@@ -258,8 +277,7 @@ def main():
     require(dnf(baseline, "makecache-v1", "makecache").returncode == 0, "signed v1 metadata rejected")
     check("metadata-v1")
     require(dnf(baseline, "install-v1", "install", PACKAGE).returncode == 0, "signed v1 install failed")
-    require(trusted_rpm_keys(fingerprint) == [fingerprint[-8:].lower()],
-            "RPM database does not trust exactly the pinned key")
+    require(trusts_only_pinned_key(fingerprint), "RPM database does not trust exactly the pinned key")
     expect_installed("1.0", "v1")
     for name in ("valid-v1", *[value[0] for value in NEGATIVE.values()], "valid-v2"):
         for path in (MOUNT / name).glob("*.rpm"):
@@ -289,8 +307,7 @@ def main():
         require(not missing, f"candidate was refused without the expected diagnostics: {missing}")
         check("rejected")
         expect_installed("1.0", "unchanged")
-        require(trusted_rpm_keys(fingerprint) == [fingerprint[-8:].lower()],
-                "candidate changed the RPM trust database")
+        require(trusts_only_pinned_key(fingerprint), "candidate changed the RPM trust database")
         check("trust-unchanged")
     emit(f"INT_FEED_CASE:{case}:PASS")
 
