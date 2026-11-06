@@ -1,9 +1,9 @@
 # Experimental local-feed QEMU runner
 
 `scripts/qemu-feed-check.py` is the host runner for the experimental positive
-DNF scenario. It has not been run against a built feed image or real signed
-fixtures. Its host-side tests check protocol handling and isolation; they do
-not establish that DNF works, reject bad signatures, or that the VM boots.
+DNF scenario. One QEMU run using a built feed image and real signed fixtures
+passed: see [the validation record](validation-feed-vm-2026-11-06.md). It
+does not establish that DNF rejects bad signatures.
 
 The runner accepts only the `success` case. The guest must check the supplied
 full test-key fingerprint, install probe version 1.0, update to 2.0, repeat the
@@ -29,8 +29,8 @@ python3 /src/scripts/qemu-feed-check.py \
   --disk-sha256 SIXTY_FOUR_LOWERCASE_HEX_CHARACTERS
 ```
 
-The manifest must include `int-feed-smoke`, `dnf`, `rpm` and `gnupg-gpg`, and
-its kernel package must match the copied kernel ABI. The runner snapshots the
+The manifest must include `int-feed-smoke`, `dnf`, `rpm`, `gnupg` and
+`gnupg-gpg`, and its kernel package must match the copied kernel ABI. The runner snapshots the
 kernel, rootfs, manifest and pinned fixture disk; guest root writes go to a
 temporary QEMU overlay. The fixture disk is a separate read-only virtio drive,
 and QEMU has no network device. The evidence directory retains a `result.json`

@@ -2,13 +2,15 @@
 
 Status: researched against locked OE-Core revision
 `ae5a301091f5b0574ea7444aab40b309b6d9f3f2`. A disposable native signature
-laboratory now passes; no working INT feed, target package update or recovery
-test is claimed. The current minimal images do not contain RPM/DNF runtime tools.
+laboratory and a positive local target DNF package update in QEMU now pass;
+see [VM validation](validation-feed-vm-2026-11-06.md). Rejection and recovery
+tests remain outstanding. The current minimal images do not contain RPM/DNF runtime tools.
 The console and virtual desktop milestones have since passed their recorded VM
 tests. The separate `--profile feed` configuration now selects the Sequoia
 backend for native and target RPM without changing the preserved image profiles.
-Building and testing the target RPM and DNF remain necessary before claiming
-a working signed feed.
+The target RPM and DNF succeeded with signed local fixtures in one positive
+VM scenario. Negative enforcement tests remain necessary before claiming a
+fully validated signed feed.
 
 An experimental `int-feed-lab-native` recipe now prepares a disposable RPM,
 two temporary test keys and detached repository metadata. It exercises native
@@ -40,7 +42,8 @@ remove the recipe's task logs.
 The feed build now contains native `rpm`, `rpmkeys`, `rpmsign`,
 `createrepo_c`, `gnupg` and `rpm-sequoia`; the lab exercises them in a
 complete native sysroot. Native DNF components have also been populated by
-earlier builds, but DNF acceptance or rejection has not been tested here.
+earlier builds. DNF acceptance has since passed in one positive local VM test;
+rejection has not been tested.
 
 The earlier default-profile native `librpmio.so.10.2.1` contained the diagnostic
 `RPM was compiled without OpenPGP support`; disassembly of
@@ -54,8 +57,9 @@ PACKAGECONFIG:append:pn-rpm = " sequoia"
 ```
 
 These options and their native dependencies are now built in the separate
-feed profile; the native laboratory exercises them. Target runtime remains
-unqualified. Use native tools within a correctly populated OE recipe sysroot or a dedicated tool
+feed profile; the native laboratory exercises them. The positive target
+scenario has also passed in QEMU; target rejection remains unqualified. Use
+native tools within a correctly populated OE recipe sysroot or a dedicated tool
 recipe: concatenating component `usr/bin` directories does not recreate the
 native sysroot's libraries, Python paths or RPM configuration.
 

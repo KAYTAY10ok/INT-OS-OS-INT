@@ -1,8 +1,9 @@
 # Isolated DNF feed VM: proposed test plan
 
-Status: an experimental image recipe and a guest helper for the positive
-`success` case exist, but have not yet been built or booted. No DNF feed,
-installation, update or rejection test has been run. The existing core and
+Status: the experimental image and guest helper have passed a positive local
+DNF install/update test in QEMU; see
+[validation-feed-vm-2026-11-06.md](validation-feed-vm-2026-11-06.md).
+Negative DNF rejection cases have not yet been run. The existing core and
 desktop image validations do not qualify this plan.
 The prerequisites, signing limitations and complete negative-case rationale
 are in [signed-feed-plan.md](signed-feed-plan.md). The two small probe recipes
@@ -16,7 +17,7 @@ The separate `int-image-feed-smoke` recipe is based on
 `rpm` and `dnf` and retain their package database. It adds a test-only service
 and GnuPG; it does not include a repository, public key or probe package.
 The minimal image's locked-root policy remains in place. This experimental
-image has not yet been built or tested and is not an installation image.
+image passed the positive QEMU test and is not an installation image.
 
 When the current operation has finished, build it using the separate profile:
 
@@ -42,7 +43,7 @@ command line. It checks the independent pin before importing a key, installs
 version 1.0, updates to 2.0 and repeats the update, checking the RPM version
 and installed file each time. It emits ordered `INT_FEED_CHECK` markers, a
 single `INT_FEED_CASE:success:PASS`, and `INT_FEED_SHUTDOWN`; failures emit
-`INT_FEED_FAIL`. The service and its DNF commands are untested in an actual
+`INT_FEED_FAIL`. The service and its positive DNF commands were tested in the
 guest. Negative cases still need to be implemented and must never be inferred
 from the success path. Do not unlock root, install a reusable credential,
 enable a remote login, or include this test service in normal images.

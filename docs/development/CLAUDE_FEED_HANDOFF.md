@@ -54,20 +54,19 @@ inspecte leur provenance avant de les modifier ou de les ajouter.
   [validation des fixtures](validation-feed-fixtures-2026-11-06.md). La clé
   jetable expire le 7 novembre 2026 à 13:19:05 UTC ; utilise une nouvelle clé
   si nécessaire. Cet essai direct ne valide pas la tâche BitBake ni DNF.
-- `int-feed-probe` existe en versions `1.0` et `2.0`, et
-  `int-image-feed-smoke` existe comme recette expérimentale. Aucune installation
-  ni mise à jour DNF en VM n'a encore été démontrée à cette date. Un service
-  invité de test du parcours positif et un lanceur QEMU sont en préparation ;
-  leurs modifications et leur état de construction doivent être inspectés
-  avant utilisation. Ils ne constituent pas encore une validation invitée.
+- `int-feed-probe` existe en versions `1.0` et `2.0`. L'image expérimentale
+  `int-image-feed-smoke` et son service ont réussi en QEMU le parcours DNF
+  local positif : installation 1.0, mise à jour 2.0 et répétition sans
+  changement, avec arrêt propre. Voir [validation VM](validation-feed-vm-2026-11-06.md).
+  Les cas de rejet DNF ne sont pas encore validés ; la cible réseau et le
+  matériel physique ne sont pas couverts.
 - Les 87 tests hôte de la suite existante ont réussi ; journal
   `/workspace/int-linux-work/host-tests-fixtures.log`. Ils ne remplacent pas
   les tests natifs et invités.
 - `scripts/feed-disk.py` prépare un disque EXT4 à partir de fixtures contrôlées
-  par leur manifeste. Ses cinq tests passent dans le conteneur, y compris la
-  création et la lecture d'une image synthétique. Il ne vérifie pas les
-  signatures et n'a pas été utilisé avec QEMU ou les fixtures signées réelles ;
-  voir [feed-disk.md](feed-disk.md).
+  par leur manifeste. Ses cinq tests passent dans le conteneur et un disque de
+  fixtures signées a servi au test QEMU positif. L'outil ne vérifie pas les
+  signatures ; voir [feed-disk.md](feed-disk.md).
 - Les preuves et caches volumineux sont hors dépôt, sous
   `/workspace/int-linux-work`. Leur présence et l'espace libre doivent être
   revérifiés ; ne supprime pas arbitrairement des données ou caches existants.
