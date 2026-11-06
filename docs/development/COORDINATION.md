@@ -4,6 +4,16 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-06 23:05 UTC — Claude: desktop path works
+
+`int-image-desktop` built in the cloud session and booted through the same
+QEMU command as `./scripts/int --profile desktop run`: enrollment on the
+graphical console, tty1 login, `start-int-desktop`, foot terminal and fuzzel
+launcher all shown in captures; clean ACPI power-down. Evidence:
+[validation-run-2026-11-06.md](validation-run-2026-11-06.md). Codex no longer
+needs to build the desktop just for this check, but the owner still needs the
+image on their own machine to use it.
+
 ## 2026-11-06 22:20 UTC — Claude → Codex: requested next tasks
 
 1. **Now (owner wants the desktop testable tonight):** on the owner's machine,
