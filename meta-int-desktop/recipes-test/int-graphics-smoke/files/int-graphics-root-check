@@ -1,0 +1,57 @@
+#!/bin/sh
+# Disposable VM only. Production images do not contain this helper.
+set -eu
+[ "$(id -u)" -eq 0 ] && [ "${SUDO_USER:-}" = intowner ] && [ "${SUDO_UID:-0}" -eq 1000 ] || exit 1
+unit=int-graphics-probe.service
+cleanup() {
+    systemctl stop "$unit" >/dev/null 2>&1 || true
+    systemctl start getty@tty1.service >/dev/null 2>&1 || true
+}
+fail() {
+    journalctl --no-pager -b -u "$unit" -n 70 || true
+    echo "INT_GRAPHICS_FAIL:$*" >&2
+    exit 1
+}
+trap cleanup EXIT
+systemctl stop getty@tty1.service || fail stop-getty
+systemd-run --unit=int-graphics-probe --property=User=intowner --property=PAMName=login \
+    --property=TTYPath=/dev/tty1 --property=StandardInput=tty \
+    --property=Environment=WLR_RENDERER=pixman --property=RemainAfterExit=yes \
+    /usr/bin/start-int-desktop || fail start-session
+sock=''
+for attempt in $(seq 1 30); do
+    for candidate in /run/user/1000/sway-ipc.*.sock; do
+        [ -S "$candidate" ] || continue
+        sock=$candidate
+    done
+    if [ -n "$sock" ] && sudo -u intowner swaymsg -s "$sock" -t get_outputs > /run/int-graphics-outputs.json 2>/dev/null && \
+        jq -e '[.[] | select(.active == true and (.name | startswith("HEADLESS-") | not))] | length > 0' /run/int-graphics-outputs.json >/dev/null; then break; fi
+    systemctl is-active --quiet "$unit" || fail inactive-session
+    sleep 1
+done
+[ -n "$sock" ] || fail missing-sway-socket
+jq -e '[.[] | select(.active == true and (.name | startswith("HEADLESS-") | not))] | length > 0' /run/int-graphics-outputs.json >/dev/null || fail missing-drm-output
+sudo -u intowner swaymsg -s "$sock" 'exec foot --config=/etc/int/foot.ini --app-id=int-graphics-terminal' > /run/int-graphics-exec.json || fail start-terminal
+jq -e 'all(.[]; .success == true)' /run/int-graphics-exec.json >/dev/null || fail terminal-command
+for attempt in $(seq 1 30); do
+    sudo -u intowner swaymsg -s "$sock" -t get_tree > /run/int-graphics-tree.json 2>/dev/null || fail window-tree
+    if jq -e '[.. | objects | select(.app_id? == "int-graphics-terminal" and .rect.width > 0 and .rect.height > 0)] | length == 1' /run/int-graphics-tree.json >/dev/null; then break; fi
+    sleep 1
+done
+pid=$(jq -r '[.. | objects | select(.app_id? == "int-graphics-terminal") | .pid][0] // empty' /run/int-graphics-tree.json)
+[ -n "$pid" ] && [ "$(awk '/^Uid:/ {print $2}' "/proc/$pid/status")" = 1000 ] || fail terminal-owner
+echo 'INT_GRAPHICS_READY'
+sleep 2
+sudo -u intowner swaymsg -s "$sock" exit >/dev/null 2>&1 || true
+for attempt in $(seq 1 20); do
+    [ "$(systemctl show -p SubState --value "$unit")" = exited ] && break
+    sleep 1
+done
+[ "$(systemctl show -p SubState --value "$unit")" = exited ] || fail session-not-exited
+[ "$(systemctl show -p ExecMainStatus --value "$unit")" = 0 ] || fail session-exit-status
+systemctl stop "$unit" || fail stop-session
+systemctl start getty@tty1.service || fail restore-getty
+trap - EXIT
+echo 'INT_GRAPHICS_EXIT_PASS'
+echo 'INT_CORE_ROOT_PASS'
+systemctl poweroff

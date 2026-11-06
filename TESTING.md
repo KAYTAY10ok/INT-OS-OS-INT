@@ -46,6 +46,18 @@ writing. Successful evidence preserves the original, unprovisioned kernel,
 rootfs and manifest with SHA256 hashes. Changes use a temporary QEMU overlay.
 Failed runs retain diagnostics but cannot produce a known-good result.
 
+For the graphical console prototype, run:
+
+```sh
+./scripts/int --profile desktop build int-image-graphics-smoke
+./scripts/int --profile desktop graphics-check
+```
+
+The additional test uses a local PAM/logind tty1 session, Virtio VGA, Sway's DRM
+backend and a real owner terminal. It validates and retains a framebuffer capture
+through a private Unix QMP socket. It does not qualify physical devices or
+keyboard/mouse interaction. See the [graphics record](docs/development/validation-graphics-2026-11-06.md).
+
 `scripts/check-kernel.py CONFIG --manifest IMAGE.manifest --require-veth` audits
 the merged core kernel configuration and module package presence. The official
 upstream netfilter fragment selects conntrack as a module even when an earlier

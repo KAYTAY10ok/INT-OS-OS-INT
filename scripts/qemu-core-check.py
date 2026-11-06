@@ -87,7 +87,7 @@ def terminate_child(child, grace: float) -> None:
 
 def execute_interactive(command: list[str], log_path: Path, timeout: float,
                         termination_grace: float = smoke.TERMINATION_GRACE,
-                        on_owner=None) -> dict:
+                        on_owner=None, on_root=None, root_helper=None) -> dict:
     outcome = {
         "returncode": None, "timed_out": False, "interrupted_signal": None,
         "stage": "spawn", "protocol_error": None, "credential_echoed": False,
@@ -149,7 +149,10 @@ def execute_interactive(command: list[str], log_path: Path, timeout: float,
             # Extension checks run as the authenticated owner, before sudo.
             # The callback receives no credential or raw transcript object.
             on_owner(child, expect, outcome)
-        child.sendline("LC_ALL=C sudo -k && LC_ALL=C sudo -p 'INT_SUDO_PASSWORD: ' /usr/libexec/int-core-root-check")
+        helper = root_helper or "/usr/libexec/int-core-root-check"
+        if helper not in ("/usr/libexec/int-core-root-check", "/usr/libexec/int-graphics-root-check"):
+            raise ProtocolError("unsupported test helper")
+        child.sendline("LC_ALL=C sudo -k && LC_ALL=C sudo -p 'INT_SUDO_PASSWORD: ' " + helper)
         # The shell echoes the command containing this marker. Only a prompt
         # beginning a fresh line proves sudo actually requested the password.
         expect(r"(?m)(?:^|[\r\n])INT_SUDO_PASSWORD: *", "sudo password")
@@ -163,6 +166,8 @@ def execute_interactive(command: list[str], log_path: Path, timeout: float,
         expect(r"(?m)(?:^|[\r\n])INT_SUDO_PASSWORD: *", "sudo password retry")
         outcome["sudo_rejected_wrong_password"] = True
         child.sendline(password)
+        if on_root is not None:
+            on_root(child, expect, outcome)
         expect(r"(?m)(?:^|[\r\n])INT_CORE_ROOT_PASS\r*(?:\n|$)", "privileged guest checks")
         expect(pexpect.EOF, "guest poweroff")
     except pexpect.TIMEOUT:
@@ -258,7 +263,8 @@ def analyze_log(serial: str, process: dict) -> dict:
 
 
 def run_core(deploy: Path, evidence_root: Path, timeout: float, *,
-             on_owner=None, analyzer=None, context: dict | None = None) -> tuple[int, Path]:
+             on_owner=None, analyzer=None, context: dict | None = None,
+             on_root=None, root_helper=None, command_transform=None) -> tuple[int, Path]:
     run = smoke.create_run_directory(evidence_root)
     print(f"QEMU core evidence: {run}", flush=True)
     started = time.monotonic()
@@ -287,13 +293,21 @@ def run_core(deploy: Path, evidence_root: Path, timeout: float, *,
         metadata["qemu_version"] = smoke.qemu_version(executable)
         metadata["artifacts"] = smoke.snapshot_inputs(deploy.resolve(), run)
         command = smoke.build_qemu_command(executable, metadata["artifacts"])
+        if command_transform is not None:
+            command = command_transform(command, run)
         metadata["command"] = command
         smoke.write_json(run / "result.json", metadata)
-        if on_owner is None:
+        if on_owner is None and on_root is None and root_helper is None:
             metadata["process"] = execute_interactive(command, run / "serial.log", timeout)
         else:
-            metadata["process"] = execute_interactive(command, run / "serial.log", timeout,
-                                                      on_owner=on_owner)
+            options = {}
+            if on_owner is not None:
+                options["on_owner"] = on_owner
+            if on_root is not None:
+                options["on_root"] = on_root
+            if root_helper is not None:
+                options["root_helper"] = root_helper
+            metadata["process"] = execute_interactive(command, run / "serial.log", timeout, **options)
         analyze = analyze_log if analyzer is None else analyzer
         analysis = analyze((run / "serial.log").read_text(encoding="utf-8"), metadata["process"])
         metadata["checks"] = analysis["checks"]

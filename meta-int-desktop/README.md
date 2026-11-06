@@ -35,7 +35,7 @@ The copies under `/etc/int` provide explicit configuration inputs for tests.
 The status bar updates its clock every thirty seconds and ends its sleep child
 when the bar closes; it adds no detached monitoring service.
 
-This layer's recipe/configuration implementation requires actual build, headless
-and graphical-seat tests. A successful headless software-rendered session does
-not qualify keyboard/mouse, the launcher interaction, GPU rendering or performance.
+This layer's build, headless session and virtual DRM/logind graphical seat pass
+the recorded QEMU tests. Those results do not qualify keyboard/mouse, launcher
+interaction, physical GPU rendering or performance.
 Use the dated validation records for actual outcomes rather than this description.

@@ -94,10 +94,19 @@ stay separate from the preserved console core. The QEMU prototype deliberately
 omits unrelated Mesa hardware/LLVM drivers; this is not a physical-GPU profile.
 
 The first desktop gate uses a rootless headless Sway session and a real Wayland
-terminal. It cannot qualify DRM seat access, keyboard/mouse use, graphical boot,
-display hardware or resource targets. Those require subsequent tests. The
-production console command `start-int-desktop` requires an active local virtual
-console session; the headless test does not pretend that path has been tested.
+terminal. A separate disposable image now also tests the actual local logind/DRM
+seat and Virtio VGA output:
+
+```sh
+./scripts/int --profile desktop build int-image-graphics-smoke
+./scripts/int --profile desktop graphics-check
+```
+
+The latter records a framebuffer capture with a private local QMP socket; see the
+[graphics validation](docs/development/validation-graphics-2026-11-06.md).
+Neither test qualifies keyboard/mouse interaction, physical displays or GPU
+hardware, accelerated rendering, or resource targets. The production command
+`start-int-desktop` requires an active local virtual console session.
 
 Images and manifests appear in
 `../int-linux-work/build/tmp/deploy/images/qemux86-64/`.

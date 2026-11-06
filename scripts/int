@@ -151,7 +151,7 @@ exec "$@"
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=["core", "desktop"], default="core")
-    parser.add_argument("command", choices=["bootstrap", "builder", "configure", "build", "shell", "check", "smoke", "core-check", "desktop-check"])
+    parser.add_argument("command", choices=["bootstrap", "builder", "configure", "build", "shell", "check", "smoke", "core-check", "desktop-check", "graphics-check"])
     parser.add_argument("target", nargs="?")
     args = parser.parse_args()
     work = workdir()
@@ -188,6 +188,10 @@ def dispatch(args, work):
         if profile != "desktop":
             raise RuntimeError("desktop-check requires --profile desktop")
         container(work, ["python3", "/src/scripts/qemu-desktop-check.py", deploy, "/work/evidence"], profile=profile)
+    elif args.command == "graphics-check":
+        if profile != "desktop":
+            raise RuntimeError("graphics-check requires --profile desktop")
+        container(work, ["python3", "/src/scripts/qemu-graphics-check.py", deploy, "/work/evidence"], profile=profile)
 
 
 if __name__ == "__main__":

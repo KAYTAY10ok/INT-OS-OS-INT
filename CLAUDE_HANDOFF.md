@@ -4,7 +4,16 @@ Current work: shared desktop integration after the verified console core, not a 
 release. INT-OS and OS-INT retain one shared architecture. No dependency on Claude
 Code is required to build or test it.
 
-## Desktop prototype — headless VM verified, 2026-11-06
+## Desktop prototype — graphical VM verified, 2026-11-06
+
+The separate `int-image-graphics-smoke` now passes a local tty1 PAM/logind,
+Virtio VGA DRM and Pixman Sway test with a mapped foot terminal owned by UID 1000.
+An actual 1280×800 framebuffer is retained as `graphics.ppm` alongside the
+known-good unprovisioned inputs. The host suite passes 74 tests. Details:
+[graphics validation](docs/development/validation-graphics-2026-11-06.md) and
+`../int-linux-work/evidence/qemu-smoke-20261106T104648.832223Z-1ef6afc521f7/`.
+The virtual terminal session was created by a test-only unit; keyboard/mouse,
+human tty login, physical GPU/monitor, acceleration and performance remain open.
 
 The new `meta-int-desktop` layer and source pin for meta-wayland
 `2b97daa23e0e612a087ea54b150bd0b8e0ff9378` implement stable Sway 1.11 /
@@ -18,7 +27,7 @@ The real VM now passes rootless headless Sway, IPC, Wayland, terminal mapping,
 session exit and the inherited core checks. See
 [validation-desktop-2026-11-06.md](docs/development/validation-desktop-2026-11-06.md)
 and `../int-linux-work/evidence/qemu-smoke-20261106T102535.306207Z-e7d97f992755/`.
-DRM seat/input and graphical output need a later test. `BUILDING.md` gives the
+Physical devices and input interaction need later tests. `BUILDING.md` gives the
 profile commands; the earlier completed core milestone follows.
 
 ## Current verified milestone — shared console core, 2026-11-05
@@ -39,8 +48,9 @@ with the current deploy/bzImage alias. The runner now rejects different ABI name
 
 The full interactive test used the smoke variant; production was built and
 archive-audited. No physical machine, desktop, signed feed or release is qualified.
-No publication or push occurred. Next: signed-feed/OpenPGP backend qualification
-and the shared desktop, following the two integration plans in docs/development.
+Development commits have since been pushed to GitHub main. No release or
+environment publication occurred. Next: signed-feed/OpenPGP backend qualification
+and desktop input/physical-device tests, following the plans in docs/development.
 
 ## Earlier verified milestone — foundation, 2026-11-05
 
