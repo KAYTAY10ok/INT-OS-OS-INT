@@ -3,6 +3,7 @@ import importlib.machinery
 import importlib.util
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -58,14 +59,21 @@ class ProfileTests(unittest.TestCase):
                       (self.work/'build-feed/conf/local.conf').read_text())
 
     def test_container_selects_separate_build_directory_and_refuses_unknown_profile(self):
-        with mock.patch.object(helper, 'docker') as docker:
-            helper.container(self.work, ['bitbake', 'int-image-desktop'], profile='desktop')
-        command = docker.call_args.args[0]
-        script = command[command.index('-ec')+1]
-        self.assertIn('oe-init-build-env /work/build-desktop', script)
+        for profile in ('desktop', 'feed'):
+            with self.subTest(profile=profile), mock.patch.object(helper, 'docker') as docker:
+                helper.container(self.work, ['bitbake', 'example'], profile=profile)
+                command = docker.call_args.args[0]
+                script = command[command.index('-ec')+1]
+                self.assertIn(f'oe-init-build-env /work/build-{profile}', script)
         with self.assertRaisesRegex(RuntimeError, 'Unknown build profile'):
             helper.configure(self.work, '../outside')
         self.assertFalse((self.work/'outside').exists())
+
+    def test_feed_build_selects_native_rpm_or_explicit_target(self):
+        for target, expected in ((None, 'rpm-native'), ('example', 'example')):
+            with self.subTest(target=target), mock.patch.object(helper, 'container') as container:
+                helper.dispatch(SimpleNamespace(profile='feed', command='build', target=target), self.work)
+                container.assert_called_once_with(self.work, ['bitbake', expected], profile='feed')
 
 
 if __name__ == '__main__':
