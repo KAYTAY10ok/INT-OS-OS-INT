@@ -1,0 +1,370 @@
+#!/usr/bin/env python3
+"""int-theme: switch the INT desktop look in one command.
+
+    int-theme list                 presets and their description
+    int-theme current              the active preset
+    int-theme set NAME             apply a preset (dark, light, blue, pink, anime)
+    int-theme wallpaper FILE       use your own image (kept across preset changes)
+    int-theme wallpaper reset      back to the preset's wallpaper
+    int-theme ensure               create the user's theme files if missing (session start)
+
+It writes only files under ~/.config that it created itself (they start with a
+marker line); a config you wrote yourself is never overwritten. It never runs a
+shell: the compositor is reloaded with a fixed argv. This is the stable
+interface used by int-ai (theme.set / theme.list / theme.current).
+"""
+import json
+import os
+import shutil
+import subprocess
+import sys
+
+SHARE = os.environ.get("INT_THEME_SHARE", "/usr/share/int")
+INSTALL_CONF = os.environ.get("INT_INSTALL_CONF", "/etc/int/install.conf")
+MARKER = "# Managed by int-theme. Delete this line to keep your own edits."
+JSON_MARKER = "// Managed by int-theme. Delete this line to keep your own edits."
+KEYS = ("description_fr", "description_en", "bg", "bg_alt", "fg", "fg_dim", "accent", "accent2",
+        "urgent", "alpha", "gaps", "radius")
+DEFAULT = "dark"
+
+
+class ThemeError(Exception):
+    pass
+
+
+def config_home():
+    return os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+
+
+def theme_dir():
+    return os.path.join(config_home(), "int", "theme")
+
+
+def language():
+    value = os.environ.get("INT_THEME_LANG", "")
+    if not value:
+        value = read_conf(INSTALL_CONF).get("INT_LANGUAGE", "")
+    if not value:
+        value = os.environ.get("LANG", "")
+    return "fr" if value.lower().startswith("fr") else "en"
+
+
+def read_conf(path):
+    values = {}
+    try:
+        with open(path, encoding="utf-8") as stream:
+            for line in stream:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                values[key.strip()] = value.strip()
+    except OSError:
+        pass
+    return values
+
+
+def presets():
+    folder = os.path.join(SHARE, "themes")
+    try:
+        names = sorted(n[:-6] for n in os.listdir(folder) if n.endswith(".theme"))
+    except OSError:
+        names = []
+    return names
+
+
+def load(name):
+    if name not in presets():
+        raise ThemeError("unknown theme %r (available: %s)" % (name, ", ".join(presets())))
+    values = read_conf(os.path.join(SHARE, "themes", name + ".theme"))
+    missing = [k for k in KEYS if k not in values]
+    if missing:
+        raise ThemeError("theme %s is incomplete: %s" % (name, ", ".join(missing)))
+    for key in ("bg", "bg_alt", "fg", "fg_dim", "accent", "accent2", "urgent"):
+        value = values[key]
+        if len(value) != 7 or value[0] != "#" or any(c not in "0123456789abcdefABCDEF" for c in value[1:]):
+            raise ThemeError("theme %s: %s is not a #rrggbb colour" % (name, key))
+    alpha = float(values["alpha"])
+    if not 0.3 <= alpha <= 1.0:
+        raise ThemeError("theme %s: alpha must be between 0.3 and 1" % name)
+    values["name"] = name
+    return values
+
+
+def current():
+    try:
+        with open(os.path.join(theme_dir(), "current"), encoding="utf-8") as stream:
+            name = stream.read().strip()
+    except OSError:
+        return None
+    return name if name in presets() else None
+
+
+def wallpaper_for(theme):
+    custom = os.path.join(theme_dir(), "wallpaper")
+    if os.path.isfile(custom) and not os.path.islink(custom):
+        return custom
+    return os.path.join(SHARE, "wallpapers", theme["name"] + ".png")
+
+
+def owned(path):
+    """True if we may (re)write path: absent, or created by int-theme."""
+    if os.path.islink(path):
+        return False
+    if not os.path.exists(path):
+        return True
+    try:
+        with open(path, encoding="utf-8") as stream:
+            first = stream.readline().rstrip("\n")
+    except (OSError, UnicodeDecodeError):
+        return False
+    return first in (MARKER, JSON_MARKER)
+
+
+def write(path, text, marker=MARKER):
+    if not owned(path):
+        return False
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    temporary = path + ".int-theme.tmp"
+    with open(temporary, "w", encoding="utf-8") as stream:
+        stream.write(marker + "\n" + text)
+    os.replace(temporary, path)
+    return True
+
+
+def hexa(colour, alpha=1.0):
+    return colour.lstrip("#") + "%02x" % round(alpha * 255)
+
+
+def sway_conf(t):
+    wall = wallpaper_for(t)
+    return f"""# Colours, gaps, wallpaper and bar for the "{t['name']}" preset.
+output * bg {wall} fill {t['bg']}
+gaps inner {t['gaps']}
+gaps outer {t['gaps']}
+default_border pixel 2
+client.focused          {t['accent']} {t['bg_alt']} {t['fg']} {t['accent2']} {t['accent']}
+client.focused_inactive {t['bg_alt']} {t['bg']} {t['fg_dim']} {t['bg_alt']} {t['bg_alt']}
+client.unfocused        {t['bg_alt']} {t['bg']} {t['fg_dim']} {t['bg_alt']} {t['bg_alt']}
+client.urgent           {t['urgent']} {t['bg_alt']} {t['fg']} {t['urgent']} {t['urgent']}
+client.background {t['bg']}
+bar {{
+    id int-main
+    position top
+    mode dock
+    height 28
+    font pango:DejaVu Sans Mono 10
+    status_command /usr/libexec/int-status
+    colors {{
+        background {t['bg']}
+        statusline {t['fg']}
+        separator {t['bg_alt']}
+        focused_workspace {t['accent']} {t['bg_alt']} {t['fg']}
+        active_workspace {t['bg_alt']} {t['bg']} {t['fg']}
+        inactive_workspace {t['bg']} {t['bg']} {t['fg_dim']}
+        urgent_workspace {t['urgent']} {t['bg_alt']} {t['fg']}
+    }}
+}}
+"""
+
+
+def hyprland_conf(t):
+    return f"""# Hyprland look for the "{t['name']}" preset (sourced by the INT Hyprland config).
+general {{
+    gaps_in = {int(t['gaps']) // 2}
+    gaps_out = {t['gaps']}
+    border_size = 2
+    col.active_border = rgba({hexa(t['accent'])}) rgba({hexa(t['accent2'])}) 45deg
+    col.inactive_border = rgba({hexa(t['bg_alt'])})
+}}
+decoration {{
+    rounding = {t['radius']}
+    active_opacity = 1.0
+    inactive_opacity = {t['alpha']}
+    blur {{
+        enabled = true
+        size = 6
+        passes = 2
+    }}
+}}
+"""
+
+
+def foot_ini(t):
+    # 16-colour palette derived from the preset; terminal translucency from alpha.
+    return f"""[main]
+font=DejaVu Sans Mono:size=10
+pad=12x12
+# Login shell so /etc/profile.d/int-fetch.sh shows the INT summary.
+login-shell=yes
+
+[colors-dark]
+alpha={t['alpha']}
+background={t['bg'][1:]}
+foreground={t['fg'][1:]}
+regular0={t['bg_alt'][1:]}
+regular1={t['urgent'][1:]}
+regular2=b4d88a
+regular3=efd087
+regular4={t['accent2'][1:]}
+regular5=c8a0e8
+regular6={t['accent'][1:]}
+regular7={t['fg_dim'][1:]}
+bright0={t['fg_dim'][1:]}
+bright1={t['urgent'][1:]}
+bright2=cbe7a6
+bright3=ffe0a4
+bright4={t['accent2'][1:]}
+bright5=debcff
+bright6={t['accent'][1:]}
+bright7={t['fg'][1:]}
+"""
+
+
+def fuzzel_ini(t):
+    return f"""[main]
+font=DejaVu Sans Mono:size=10
+prompt=INT >
+placeholder={'Chercher une application' if language() == 'fr' else 'Find an application'}
+terminal=foot --app-id=int-terminal -e
+icons-enabled=no
+lines=8
+width=40
+horizontal-pad=16
+vertical-pad=12
+
+[colors]
+background={hexa(t['bg'], float(t['alpha']))}
+text={hexa(t['fg'])}
+prompt={hexa(t['accent'])}
+placeholder={hexa(t['fg_dim'])}
+input={hexa(t['fg'])}
+match={hexa(t['accent'])}
+selection={hexa(t['bg_alt'])}
+selection-text={hexa(t['fg'])}
+selection-match={hexa(t['accent2'])}
+border={hexa(t['accent'])}
+
+[border]
+width=2
+radius={t['radius']}
+"""
+
+
+def fastfetch_json(t):
+    config = {
+        "logo": {"source": os.path.join(SHARE, "ascii", "int.txt"), "type": "file",
+                 "color": {"1": t["accent"], "2": t["accent2"]}, "padding": {"right": 3}},
+        "display": {"color": {"keys": t["accent"], "title": t["accent2"]}, "separator": "  "},
+        "modules": ["title", "separator", "os", "kernel", "uptime", "shell", "wm", "terminal",
+                    "cpu", "gpu", "memory", "disk", "localip", "break", "colors"],
+    }
+    return json.dumps(config, indent=2) + "\n"
+
+
+def keyboard_conf():
+    conf = read_conf(INSTALL_CONF)
+    layout = conf.get("INT_XKB_LAYOUT", "")
+    variant = conf.get("INT_XKB_VARIANT", "")
+    safe = all(c.isalnum() or c in "_-," for c in layout + variant)
+    if not layout or not safe:
+        return "# No keyboard layout recorded by the installer.\n"
+    lines = ["input type:keyboard {", f"    xkb_layout {layout}"]
+    if variant:
+        lines.append(f"    xkb_variant {variant}")
+    lines.append("}")
+    return "\n".join(lines) + "\n"
+
+
+def apply(name):
+    theme = load(name)
+    base = theme_dir()
+    os.makedirs(base, mode=0o700, exist_ok=True)
+    write(os.path.join(base, "sway.conf"), sway_conf(theme))
+    write(os.path.join(base, "hyprland.conf"), hyprland_conf(theme))
+    write(os.path.join(base, "keyboard.conf"), keyboard_conf())
+    skipped = []
+    for path, text, marker in (
+            (os.path.join(config_home(), "foot", "foot.ini"), foot_ini(theme), MARKER),
+            (os.path.join(config_home(), "fuzzel", "fuzzel.ini"), fuzzel_ini(theme), MARKER),
+            (os.path.join(config_home(), "fastfetch", "config.jsonc"), fastfetch_json(theme), JSON_MARKER)):
+        if not write(path, text, marker):
+            skipped.append(path)
+    with open(os.path.join(base, "current.tmp"), "w", encoding="utf-8") as stream:
+        stream.write(name + "\n")
+    os.replace(os.path.join(base, "current.tmp"), os.path.join(base, "current"))
+    reload_compositor()
+    return skipped
+
+
+def reload_compositor():
+    if os.environ.get("SWAYSOCK") and shutil.which("swaymsg"):
+        subprocess.run(["swaymsg", "reload"], check=False, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, timeout=10)
+    if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") and shutil.which("hyprctl"):
+        subprocess.run(["hyprctl", "reload"], check=False, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, timeout=10)
+
+
+def default_theme():
+    return DEFAULT
+
+
+def cmd_wallpaper(arg):
+    target = os.path.join(theme_dir(), "wallpaper")
+    if arg == "reset":
+        if os.path.lexists(target):
+            os.remove(target)
+    else:
+        source = os.path.realpath(arg)
+        if not os.path.isfile(source):
+            raise ThemeError("not a file: %s" % arg)
+        with open(source, "rb") as stream:
+            head = stream.read(12)
+        if not (head.startswith(b"\x89PNG") or head.startswith(b"\xff\xd8")):
+            raise ThemeError("only PNG or JPEG images are supported")
+        os.makedirs(theme_dir(), mode=0o700, exist_ok=True)
+        shutil.copyfile(source, target + ".tmp")
+        os.replace(target + ".tmp", target)
+    name = current() or default_theme()
+    apply(name)
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    fr = language() == "fr"
+    try:
+        if not argv or argv[0] in ("-h", "--help"):
+            print(__doc__.strip())
+            return 0
+        command, rest = argv[0], argv[1:]
+        if command == "list" and not rest:
+            for name in presets():
+                theme = load(name)
+                print("%-6s  %s" % (name, theme["description_fr" if fr else "description_en"]))
+            return 0
+        if command == "current" and not rest:
+            print(current() or default_theme())
+            return 0
+        if command == "set" and len(rest) == 1:
+            skipped = apply(rest[0])
+            print(("Thème appliqué : %s" if fr else "Theme applied: %s") % rest[0])
+            for path in skipped:
+                print(("conservé (modifié par toi) : %s" if fr else "kept (your own edits): %s") % path)
+            return 0
+        if command == "wallpaper" and len(rest) == 1:
+            cmd_wallpaper(rest[0])
+            print("Fond d'écran mis à jour" if fr else "Wallpaper updated")
+            return 0
+        if command == "ensure" and not rest:
+            if current() is None or not os.path.exists(os.path.join(theme_dir(), "sway.conf")):
+                apply(current() or default_theme())
+            return 0
+        raise ThemeError("usage: int-theme list | current | set NAME | wallpaper FILE|reset | ensure")
+    except ThemeError as exc:
+        print("int-theme: %s" % exc, file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

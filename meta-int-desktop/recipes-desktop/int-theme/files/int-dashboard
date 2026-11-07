@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""int-dashboard: live system dashboard in a floating, translucent terminal.
+
+    int-dashboard show [STYLE]   open it (STYLE: semi-transparent (default), opaque, compact)
+    int-dashboard run            draw it in the current terminal (q or Ctrl-C to quit)
+
+Read-only: it only reads /proc, /sys and filesystem statistics.
+"""
+import os
+import select
+import shutil
+import subprocess
+import sys
+import termios
+import time
+import tty
+
+STYLES = {"semi-transparent": "0.55", "transparent": "0.40", "opaque": "1.0", "compact": "0.70"}
+
+
+def read(path, default=""):
+    try:
+        with open(path, encoding="utf-8") as stream:
+            return stream.read()
+    except OSError:
+        return default
+
+
+def cpu_times():
+    fields = read("/proc/stat").splitlines()[0].split()[1:]
+    values = [int(v) for v in fields]
+    idle = values[3] + (values[4] if len(values) > 4 else 0)
+    return sum(values), idle
+
+
+def memory():
+    info = {}
+    for line in read("/proc/meminfo").splitlines():
+        key, _, rest = line.partition(":")
+        info[key] = int(rest.split()[0]) * 1024 if rest.split() else 0
+    total = info.get("MemTotal", 0)
+    used = total - info.get("MemAvailable", 0)
+    return used, total
+
+
+def disk(path):
+    try:
+        st = os.statvfs(path)
+    except OSError:
+        return 0, 0
+    total = st.f_blocks * st.f_frsize
+    return total - st.f_bavail * st.f_frsize, total
+
+
+def network():
+    rx = tx = 0
+    for line in read("/proc/net/dev").splitlines()[2:]:
+        name, _, data = line.partition(":")
+        if name.strip() == "lo":
+            continue
+        parts = data.split()
+        rx += int(parts[0])
+        tx += int(parts[8])
+    return rx, tx
+
+
+def temperatures():
+    temps = []
+    base = "/sys/class/hwmon"
+    try:
+        entries = sorted(os.listdir(base))
+    except OSError:
+        return temps
+    for entry in entries:
+        name = read(os.path.join(base, entry, "name")).strip()
+        value = read(os.path.join(base, entry, "temp1_input")).strip()
+        if value.isdigit():
+            temps.append((name or entry, int(value) / 1000))
+    return temps
+
+
+def human(n):
+    for unit in ("B", "K", "M", "G", "T"):
+        if n < 1024:
+            return "%.1f%s" % (n, unit)
+        n /= 1024
+    return "%.1fP" % n
+
+
+def bar(fraction, width):
+    fraction = max(0.0, min(1.0, fraction))
+    full = int(fraction * width)
+    return "█" * full + "░" * (width - full)
+
+
+def draw(prev):
+    cols = max(40, shutil.get_terminal_size().columns)
+    width = cols - 22
+    total, idle = cpu_times()
+    rx, tx = network()
+    now = time.monotonic()
+    out = ["\x1b[H\x1b[2J", "\x1b[1;36m  I N T   ·   dashboard\x1b[0m   %s\n\n" % time.strftime("%H:%M:%S")]
+    if prev:
+        ptotal, pidle, prx, ptx, pnow = prev
+        busy = 1 - (idle - pidle) / max(1, total - ptotal)
+        dt = max(0.1, now - pnow)
+        out.append("  CPU   %s %5.1f%%\n" % (bar(busy, width), busy * 100))
+        net = "  NET   ↓ %s/s   ↑ %s/s\n" % (human((rx - prx) / dt), human((tx - ptx) / dt))
+    else:
+        out.append("  CPU   %s   ...\n" % bar(0, width))
+        net = "  NET   ...\n"
+    used, mem_total = memory()
+    out.append("  RAM   %s %s / %s\n" % (bar(used / max(1, mem_total), width), human(used), human(mem_total)))
+    for label, path in (("DISK", "/"), ("HOME", os.path.expanduser("~"))):
+        used, size = disk(path)
+        out.append("  %-4s  %s %s / %s\n" % (label, bar(used / max(1, size), width), human(used), human(size)))
+    out.append(net)
+    load = read("/proc/loadavg").split()[:3]
+    uptime = int(float(read("/proc/uptime", "0").split()[0] or 0))
+    out.append("  LOAD  %s    UP %dh%02dm\n" % (" ".join(load), uptime // 3600, uptime % 3600 // 60))
+    temps = temperatures()
+    if temps:
+        out.append("  TEMP  " + "   ".join("%s %.0f°C" % t for t in temps[:4]) + "\n")
+    out.append("\n  \x1b[2mq: quitter / quit\x1b[0m")
+    sys.stdout.write("".join(out))
+    sys.stdout.flush()
+    return total, idle, rx, tx, now
+
+
+def run():
+    fd = sys.stdin.fileno()
+    interactive = os.isatty(fd)
+    old = termios.tcgetattr(fd) if interactive else None
+    try:
+        if interactive:
+            tty.setcbreak(fd)
+        sys.stdout.write("\x1b[?25l")
+        prev = None
+        while True:
+            prev = draw(prev)
+            ready = select.select([sys.stdin], [], [], 2.0)[0] if interactive else []
+            if ready and sys.stdin.read(1) in ("q", "Q"):
+                return 0
+            if not interactive:
+                time.sleep(2)
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        sys.stdout.write("\x1b[?25h\n")
+        if old is not None:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+def show(style):
+    alpha = STYLES.get(style)
+    if alpha is None:
+        # Free-form styles (e.g. from int-ai) fall back to the default look.
+        alpha = STYLES["semi-transparent"]
+    if not os.environ.get("WAYLAND_DISPLAY"):
+        return run()
+    subprocess.Popen(["foot", "--app-id=int-dashboard", "-o", "colors-dark.alpha=" + alpha,
+                      sys.argv[0] if os.path.isabs(sys.argv[0]) else "int-dashboard", "run"],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     start_new_session=True)
+    return 0
+
+
+def main(argv):
+    if argv[:1] == ["run"]:
+        return run()
+    if argv[:1] == ["show"] and len(argv) <= 2:
+        return show(argv[1] if len(argv) == 2 else "semi-transparent")
+    print(__doc__.strip())
+    return 0 if argv[:1] in ([], ["-h"], ["--help"]) else 2
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except BrokenPipeError:
+        os._exit(0)

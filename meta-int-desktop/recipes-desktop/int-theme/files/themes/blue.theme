@@ -1,0 +1,12 @@
+description_fr = Bleu profond, accents electriques
+description_en = Deep blue, electric accents
+bg = #061a33
+bg_alt = #0c2a52
+fg = #dcecff
+fg_dim = #8fb0d6
+accent = #3ea6ff
+accent2 = #66e0ff
+urgent = #ff6b6b
+alpha = 0.88
+gaps = 10
+radius = 10

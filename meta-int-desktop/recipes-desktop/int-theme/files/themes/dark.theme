@@ -1,0 +1,12 @@
+description_fr = Sombre bleu nuit, accents cyan (par defaut)
+description_en = Dark navy, cyan accents (default)
+bg = #0b1020
+bg_alt = #15243a
+fg = #e2edf7
+fg_dim = #91a6bc
+accent = #62d6e8
+accent2 = #7aa2ed
+urgent = #f07178
+alpha = 0.92
+gaps = 8
+radius = 8

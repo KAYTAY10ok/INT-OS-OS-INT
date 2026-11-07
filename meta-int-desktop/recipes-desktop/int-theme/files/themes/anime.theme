@@ -1,0 +1,12 @@
+description_fr = Neon rose/cyan, fond sakura (ajoute ta propre image avec int-theme wallpaper)
+description_en = Pink/cyan neon, sakura backdrop (add your own image with int-theme wallpaper)
+bg = #140c26
+bg_alt = #261645
+fg = #f3e9ff
+fg_dim = #b5a2d6
+accent = #ff8fd8
+accent2 = #7fd6ff
+urgent = #ff5f87
+alpha = 0.85
+gaps = 12
+radius = 14

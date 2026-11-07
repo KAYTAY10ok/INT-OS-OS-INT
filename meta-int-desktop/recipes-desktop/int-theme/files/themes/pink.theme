@@ -1,0 +1,12 @@
+description_fr = Rose et violet, doux
+description_en = Soft pink and violet
+bg = #1e0f1f
+bg_alt = #33163a
+fg = #ffe6f4
+fg_dim = #c79bb8
+accent = #ff6fb5
+accent2 = #c48bff
+urgent = #ff5e5e
+alpha = 0.88
+gaps = 10
+radius = 12

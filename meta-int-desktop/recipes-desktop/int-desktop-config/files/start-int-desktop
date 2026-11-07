@@ -28,6 +28,19 @@ export XDG_CURRENT_DESKTOP=sway
 export XDG_SESSION_DESKTOP=int
 export XDG_SESSION_TYPE=wayland
 config_home=${XDG_CONFIG_HOME:-$HOME/.config}
+# First desktop start: let the owner pick a look, then keep it.
+if [ ! -f "$config_home/int/theme/current" ] && [ -t 0 ]; then
+    case "$(sed -n 's/^INT_LANGUAGE=//p' /etc/int/install.conf 2>/dev/null)${LANG:-}" in
+        fr*) printf '\nChoisis le theme de ton bureau (modifiable plus tard avec Super+t ou int-theme) :\n' ;;
+        *) printf '\nChoose your desktop theme (change it later with Super+t or int-theme):\n' ;;
+    esac
+    int-theme list | awk '{ printf "  %d) %s\n", NR, $0 }'
+    printf '> '
+    IFS= read -r choice || choice=
+    name=$(int-theme list | awk -v n="$choice" 'NR == n { print $1 }')
+    int-theme set "${name:-dark}" >/dev/null || fail 'Cannot apply the desktop theme.'
+fi
+int-theme ensure || fail 'Cannot prepare the desktop theme.'
 config=$config_home/sway/config
 if [ ! -f "$config" ]; then config=/etc/int/sway/config; fi
 exec dbus-run-session -- sway --config "$config"

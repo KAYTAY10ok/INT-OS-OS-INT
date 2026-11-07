@@ -4,7 +4,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 SRC_URI = "file://start-int-desktop file://int-status file://sway-config file://foot.ini file://fuzzel.ini file://int-desktop.desktop"
 S = "${UNPACKDIR}"
 inherit allarch
-RDEPENDS:${PN} = "busybox dbus systemd sway-1.11 foot fuzzel"
+RDEPENDS:${PN} = "busybox dbus systemd sway-1.11 foot fuzzel int-theme swaybg"
 do_install() {
     install -Dm0755 ${S}/start-int-desktop ${D}${bindir}/start-int-desktop
     install -Dm0755 ${S}/int-status ${D}${libexecdir}/int-status

@@ -6,22 +6,12 @@ set $term foot --app-id=int-terminal
 set $menu fuzzel
 font pango:DejaVu Sans Mono 10
 
-output * bg #0b1020 solid_color
-gaps inner 8
-gaps outer 8
-default_border pixel 1
-default_floating_border pixel 1
+# Colours, gaps, wallpaper, bar and keyboard come from int-theme
+# (~/.config/int/theme, created by start-int-desktop before Sway starts).
+default_floating_border pixel 2
 hide_edge_borders smart
 focus_follows_mouse no
 floating_modifier $mod normal
-
-# Class                 border  background text    indicator child_border
-client.focused          #62d6e8 #15243a    #e2edf7 #62d6e8   #62d6e8
-client.focused_inactive #263950 #101a2b    #91a6bc #263950   #263950
-client.unfocused        #1b2b40 #0b1020    #91a6bc #1b2b40   #1b2b40
-client.urgent           #f07178 #4a2437    #ffffff #f07178   #f07178
-client.placeholder      #263950 #101a2b    #91a6bc #263950   #263950
-client.background #0b1020
 
 bindsym $mod+Return exec $term
 bindsym $mod+d exec $menu
@@ -89,20 +79,12 @@ mode "resize" {
 }
 bindsym $mod+r mode "resize"
 
-bar {
-    id int-main
-    position top
-    mode dock
-    height 28
-    font pango:DejaVu Sans Mono 10
-    status_command /usr/libexec/int-status
-    colors {
-        background #0b1020
-        statusline #c4d6e8
-        separator #263950
-        focused_workspace #62d6e8 #15243a #e2edf7
-        active_workspace #263950 #101a2b #c4d6e8
-        inactive_workspace #0b1020 #0b1020 #91a6bc
-        urgent_workspace #f07178 #4a2437 #ffffff
-    }
-}
+# Theme switch shortcut: Super+t opens the preset list in a terminal.
+bindsym $mod+t exec foot --app-id=int-terminal sh -c 'int-theme list; printf "\n> "; read n; int-theme set "$n"; sleep 2'
+
+# The INT dashboard floats over the desktop (Super+i, or ask int-ai).
+for_window [app_id="int-dashboard"] floating enable, resize set 760 360, move position center
+bindsym $mod+i exec int-dashboard show
+
+include ~/.config/int/theme/sway.conf
+include ~/.config/int/theme/keyboard.conf

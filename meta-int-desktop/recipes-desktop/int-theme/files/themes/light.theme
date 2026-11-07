@@ -1,0 +1,12 @@
+description_fr = Clair et sobre, accents bleus
+description_en = Clean light, blue accents
+bg = #eef2f7
+bg_alt = #d9e2ee
+fg = #1b2433
+fg_dim = #5b6b80
+accent = #2f7fd0
+accent2 = #8a5cd0
+urgent = #d03d4a
+alpha = 0.96
+gaps = 8
+radius = 10
