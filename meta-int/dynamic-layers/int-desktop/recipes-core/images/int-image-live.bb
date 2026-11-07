@@ -38,5 +38,8 @@ IMAGE_INSTALL:append = " \
 "
 # The installer creates a disk-sized partition; the live rootfs needs little slack.
 IMAGE_ROOTFS_EXTRA_SPACE = "65536"
+# The live rootfs is read-only (tmpfs overlay) and the installer creates its own
+# filesystem, so the default 30% free-space overhead only enlarges the ISO.
+IMAGE_OVERHEAD_FACTOR = "1.05"
 # Locales offered by the installer (French/English, Swiss/German keyboards).
 IMAGE_LINGUAS = "en-us fr-fr fr-ch de-ch"
