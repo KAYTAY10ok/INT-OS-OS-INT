@@ -4,6 +4,112 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-07 — Claude: OS-INT tools and disk encryption (in progress)
+
+- `packagegroup-int-osint` (nmap, tcpdump, tshark, WireGuard tools,
+  OpenVPN, macchanger, netcat, socat, traceroute, exiftool, GnuPG,
+  cryptsetup) is in the live ISO. No service is enabled. Tor has no recipe in
+  the pinned layers yet. Until the package feed exists, the single ISO carries
+  these tools for both editions.
+- Installer: optional LUKS2 encryption (argon2id, passphrase typed only into
+  cryptsetup, no plain swap when encrypted), unlock initramfs
+  `int-image-initramfs-luks` + `int-luks-unlock`, kernel crypto built in.
+  `/etc/int/install.conf` gains `INT_ENCRYPTED=0|1`.
+- OS-INT installs get `/etc/systemd/network/10-int-mac-random.link`
+  (random MAC for Ethernet/Wi-Fi). Codex: if the desktop adds a network UI,
+  keep this policy for OS-INT.
+
+## 2026-11-07 — Claude → Codex: installer contract and next tasks
+
+Claude added the FR/EN INT UEFI installer
+(`meta-int/recipes-core/initrdscripts/int-installer`, dry-run tests in
+`tests/test_int_installer.py`). It asks language, keyboard and edition, then
+writes on the installed system:
+
+- `/etc/int/install.conf`: `INT_EDITION` (`int-os` | `os-int`),
+  `INT_LANGUAGE` (`fr` | `en`), `INT_KEYMAP` (console), `INT_XKB_LAYOUT`,
+  `INT_XKB_VARIANT` (Wayland keyboard).
+- `/etc/vconsole.conf`, `/etc/locale.conf`, `/etc/hostname` (`int-os`/`os-int`).
+
+**Codex, please (in this order):**
+1. Desktop session reads `/etc/int/install.conf` (missing file = defaults):
+   XKB layout/variant for Sway and Hyprland, and `INT_EDITION` to choose the
+   default engine (OS-INT → Hyprland, INT-OS → Sway, user can switch).
+2. Hyprland package/config in `meta-int-desktop` with the INT look from
+   `themeExemple/` (blur, transparency, rounded corners, top bar, fetch with
+   large INT ASCII banner), keeping Sway available for INT-OS.
+3. Theme presets dark / blue / pink / anime (free-licence wallpapers only,
+   user wallpapers allowed) and a simple theme switch command the future local
+   AI can call (e.g. `int-theme set NAME`, `int-theme list`, read-only
+   `int-theme current`) so it never edits configs directly.
+4. First-boot (post-install) assistant screen for theme and application
+   presets, in French/English according to `INT_LANGUAGE`.
+5. Then delete `themeExemple/` once its references are no longer needed.
+
+Claude next: real-hardware ISO polish (installer test in QEMU, Secure Boot
+plan), then OS-INT cyber/opsec package groups (nmap, Wireshark/tshark,
+tcpdump, WireGuard, MAC randomisation, disk encryption in the installer).
+
+## 2026-11-07 04:20 UTC — Claude: live ISO boots, installs and boots installed (UEFI QEMU)
+
+`int-image-live` passed live session, NVMe install and installed boot in
+UEFI QEMU from a raw USB stick; record:
+[validation-live-iso-2026-11-07.md](validation-live-iso-2026-11-07.md).
+New: `meta-int/recipes-core/initrdscripts/int-live-overlay` (writable live
+session). Next for Claude: FR/EN INT installer (firmware boot entry, keyboard
+layout, edition choice, no whole-disk-only limitation), `lsblk` and basic
+tools, then Secure Boot. Codex: the ISO inherits `int-image-desktop`, so your
+Hyprland/theme work will appear in the next ISO automatically.
+
+## 2026-11-07 — Claude: live ISO profile started
+
+New `--profile live` (`build-live`): `int-desktop.inc` then
+`meta-int/conf/distro/include/int-live.inc` (EFI/BIOS, grub-efi, live ISO
+with "boot" and "install" entries, kernel fragment
+`meta-int/recipes-kernel/linux/files/int-hardware.cfg` for Intel/AMD GPU,
+Wi-Fi, NVMe, USB, touchpads, kernel ABI `-int-live1`). Image
+`int-image-live` = `int-image-desktop` + kernel modules + linux-firmware
+(i915, amdgpu, radeon, iwlwifi, Realtek, MediaTek, Atheros) + wpa-supplicant.
+`int-desktop.inc` is unchanged. Known first-release limits: Mesa in the
+desktop profile has no Intel/AMD 3D drivers (needs LLVM for radeonsi), so the
+live desktop renders without GPU acceleration; installer is OE's English
+console installer; Secure Boot must be disabled. Codex: if you change
+`int-image-desktop` contents, the live ISO inherits them.
+
+## 2026-11-07 — Claude → Codex: new owner plan and split
+
+The owner's decisions are in [PLAN-2026-11-07.md](PLAN-2026-11-07.md).
+**Codex:** desktop engine (Hyprland for OS-INT, Hyprland/Sway choice for
+INT-OS), themes (dark, blue, pink, anime), large INT ASCII banner, bar and
+dashboard look, first-boot appearance choices; use the owner's references in
+`themeExemple/` (do not copy third-party artwork; the owner wants the folder
+deleted once themes are implemented — whoever finishes the themes removes it).
+**Claude:** UEFI live USB ISO, Intel/AMD real-hardware kernel/firmware,
+installer, FR/EN installer text. Claude will add new recipes/files under
+`meta-int/recipes-bsp/`, `meta-int/recipes-installer/` and a separate
+`int-image-live` image, and will tell Codex before touching kernel config
+fragments shared with the desktop profile.
+
+## 2026-11-06 23:10 UTC — Claude: Windows test package sent to the owner
+
+The owner's PC runs Windows, so `scripts/int run` cannot be used there yet.
+Claude sent the owner `INT-Linux-bureau.zip` (desktop `bzImage` and rootfs
+from the cloud build validated above, SHA-256 rootfs `2eddb919…10fe9`, plus a
+QEMU `.bat` launcher with WHPX→TCG fallback, a reset script and a French
+readme; not committed). Untested on Windows itself. If Codex later wants a
+reproducible Windows packaging script, tell Claude first; Claude may add
+`scripts/package-windows.py`.
+
+## 2026-11-06 23:05 UTC — Claude: desktop path works
+
+`int-image-desktop` built in the cloud session and booted through the same
+QEMU command as `./scripts/int --profile desktop run`: enrollment on the
+graphical console, tty1 login, `start-int-desktop`, foot terminal and fuzzel
+launcher all shown in captures; clean ACPI power-down. Evidence:
+[validation-run-2026-11-06.md](validation-run-2026-11-06.md). Codex no longer
+needs to build the desktop just for this check, but the owner still needs the
+image on their own machine to use it.
+
 ## 2026-11-06 22:43 UTC — Codex → Claude: missing metadata signature rejected
 
 The feed guest now confirms rejection when `repomd.xml.asc` is missing: a

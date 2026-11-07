@@ -128,6 +128,17 @@ class ProfileTests(unittest.TestCase):
         lock.assert_not_called()
         docker.assert_not_called()
 
+    def test_live_profile_layers_desktop_then_live_in_separate_directory(self):
+        helper.configure(self.work, 'live')
+        conf = self.work/'build-live/conf'
+        local = (conf/'local.conf').read_text()
+        self.assertLess(local.index('int-desktop.inc'), local.index('int-live.inc'))
+        self.assertIn('/src/meta-int-desktop', (conf/'bblayers.conf').read_text())
+        self.assertFalse((self.work/'build-desktop/conf/local.conf').exists())
+        with mock.patch.object(helper, 'container') as container:
+            helper.dispatch(SimpleNamespace(profile='live', command='build', target=None), self.work)
+            container.assert_called_once_with(self.work, ['bitbake', 'int-image-live'], profile='live')
+
 
 if __name__ == '__main__':
     unittest.main()
