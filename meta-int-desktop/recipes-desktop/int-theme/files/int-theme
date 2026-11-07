@@ -276,6 +276,14 @@ def keyboard_conf():
     return "\n".join(lines) + "\n"
 
 
+def hyprland_keyboard_conf():
+    conf = read_conf(INSTALL_CONF)
+    layout, variant = conf.get("INT_XKB_LAYOUT", ""), conf.get("INT_XKB_VARIANT", "")
+    if not layout or not all(c.isalnum() or c in "_-," for c in layout + variant):
+        return "# No keyboard layout recorded by the installer.\n"
+    return "input {\n    kb_layout = %s\n    kb_variant = %s\n}\n" % (layout, variant)
+
+
 def apply(name):
     theme = load(name)
     base = theme_dir()
@@ -283,6 +291,11 @@ def apply(name):
     write(os.path.join(base, "sway.conf"), sway_conf(theme))
     write(os.path.join(base, "hyprland.conf"), hyprland_conf(theme))
     write(os.path.join(base, "keyboard.conf"), keyboard_conf())
+    write(os.path.join(base, "hyprland-keyboard.conf"), hyprland_keyboard_conf())
+    # Plain path (no marker) read by the Hyprland session's wallpaper command.
+    with open(os.path.join(base, "wallpaper-path.tmp"), "w", encoding="utf-8") as stream:
+        stream.write(wallpaper_for(theme) + "\n")
+    os.replace(os.path.join(base, "wallpaper-path.tmp"), os.path.join(base, "wallpaper-path"))
     skipped = []
     for path, text, marker in (
             (os.path.join(config_home(), "foot", "foot.ini"), foot_ini(theme), MARKER),

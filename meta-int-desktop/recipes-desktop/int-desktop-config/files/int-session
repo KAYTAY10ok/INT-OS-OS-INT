@@ -1,0 +1,14 @@
+#!/bin/sh
+# int-session sway|hyprland|current: choose the desktop engine for your next start.
+set -eu
+dir=${XDG_CONFIG_HOME:-$HOME/.config}/int
+case "${1:-current}" in
+    sway|hyprland)
+        if [ "$1" = hyprland ] && ! command -v Hyprland >/dev/null 2>&1; then
+            echo "Hyprland is not installed on this system." >&2; exit 2
+        fi
+        mkdir -p "$dir"; printf '%s\n' "$1" > "$dir/session"
+        echo "Next desktop start: $1 (log out, then run start-int-desktop)" ;;
+    current) cat "$dir/session" 2>/dev/null || echo "automatic (Hyprland for OS-INT if installed, else Sway)" ;;
+    *) echo "usage: int-session sway|hyprland|current" >&2; exit 2 ;;
+esac

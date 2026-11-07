@@ -41,6 +41,22 @@ if [ ! -f "$config_home/int/theme/current" ] && [ -t 0 ]; then
     int-theme set "${name:-dark}" >/dev/null || fail 'Cannot apply the desktop theme.'
 fi
 int-theme ensure || fail 'Cannot prepare the desktop theme.'
+# Session engine: ~/.config/int/session (sway|hyprland), else Hyprland for
+# OS-INT when installed, else Sway. Change it with: int-session sway|hyprland
+engine=$(cat "$config_home/int/session" 2>/dev/null || true)
+if [ -z "$engine" ]; then
+    engine=sway
+    if [ "$(sed -n 's/^INT_EDITION=//p' /etc/int/install.conf 2>/dev/null)" = os-int ] \
+            && command -v Hyprland >/dev/null 2>&1; then
+        engine=hyprland
+    fi
+fi
+if [ "$engine" = hyprland ] && command -v Hyprland >/dev/null 2>&1; then
+    export XDG_CURRENT_DESKTOP=Hyprland
+    config=$config_home/hypr/hyprland.conf
+    if [ ! -f "$config" ]; then config=/etc/int/hypr/hyprland.conf; fi
+    exec dbus-run-session -- Hyprland --config "$config"
+fi
 config=$config_home/sway/config
 if [ ! -f "$config" ]; then config=/etc/int/sway/config; fi
 exec dbus-run-session -- sway --config "$config"

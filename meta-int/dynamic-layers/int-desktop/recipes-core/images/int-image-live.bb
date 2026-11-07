@@ -34,8 +34,12 @@ IMAGE_INSTALL:append = " \
     int-ai \
     int-ai-setup \
     llama-cpp \
+    hyprland \
+    procps \
 "
 # The installer creates a disk-sized partition; the live rootfs needs little slack.
 IMAGE_ROOTFS_EXTRA_SPACE = "65536"
 # Locales offered by the installer (French/English, Swiss/German keyboards).
 IMAGE_LINGUAS = "en-us fr-fr fr-ch de-ch"
+# Hyprland session for OS-INT, without its Qt-based helper tools.
+BAD_RECOMMENDATIONS += "hyprland-guiutils hyprshutdown hyprland-contrib"
