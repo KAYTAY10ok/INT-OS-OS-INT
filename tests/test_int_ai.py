@@ -134,6 +134,10 @@ class RegistryTest(unittest.TestCase):
         # The registry used for validation keeps accepting rule-based outputs.
         self.assertNotIn("enum", ai.REGISTRY["theme.set"][0]["properties"]["name"])
 
+    def test_prompt_steers_destructive_requests_to_none(self):
+        self.assertIn("no action to delete", ai.SYSTEM_PROMPT)
+        self.assertNotIn("delete", " ".join(ai.REGISTRY))
+
     def test_theme_synonyms_map_to_canonical_names(self):
         self.assertEqual(ai.validate('{"action":"theme.set","args":{"name":"rose"}}')["args"]["name"], "pink")
         self.assertEqual(ai.validate('{"action":"theme.set","args":{"name":"sombre"}}')["args"]["name"], "dark")

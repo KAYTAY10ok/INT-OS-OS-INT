@@ -340,7 +340,8 @@ SYSTEM_PROMPT = (
     "files.create{path,content} (inside the user's home only) security.check{} packages.install{name} "
     "dashboard.show{style}. Theme names: dark, light, blue, pink, anime (French rose=pink, bleu=blue, "
     "sombre=dark, clair=light). Paths always start with ~/ (the user's home), e.g. ~/Documents/notes.txt. "
-    "If the request does not match one action, output {\"action\":\"none\",\"args\":{}}.\n"
+    "There is no action to delete, move or modify files or the system: for such requests, and for "
+    "anything that does not clearly match one action, output {\"action\":\"none\",\"args\":{}}.\n"
     "Example: \"mets le thème bleu\" -> {\"action\":\"theme.set\",\"args\":{\"name\":\"blue\"}}"
 )
 

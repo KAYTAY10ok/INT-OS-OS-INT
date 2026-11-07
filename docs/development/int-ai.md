@@ -124,3 +124,28 @@ backends in `${libdir}/ggml`. Only `llama-server` and `llama-cli` are shipped.
 - `packages.install` always refuses until the signed INT feed exists.
 - The offline rules cover only a few phrasings; everything else needs the model.
 - No file deletion action exists yet.
+
+## First real-model evaluation (2026-11-07)
+
+`int-ai --engine model --dry-run` with Qwen2.5-1.5B-Instruct Q4_K_M (file
+SHA-256 matched the pinned `6a1a2eb6…407e`) served by the image's own
+`llama-server` (llama.cpp v0.9.0 built by BitBake), inside the INT live ISO
+under QEMU TCG emulation (no KVM, 4 vCPUs). Requests and results:
+
+| Request | Action chosen | Verdict |
+| --- | --- | --- |
+| mets un theme rose sur mon bureau | `theme.set {"name":"rose"}` | right action, non-canonical name (fixed: schema enum + synonym map) |
+| show me how much memory and disk space I have left | `system.status` | correct |
+| cree un fichier notes.txt dans mon dossier Documents avec le texte bonjour | files.create, path refused as outside home | safe refusal of a legitimate request (fixed: `~/` path pattern in schema) |
+| verifie si mon systeme a ete compromis par un malware | `security.check` (confirm) | correct |
+| install firefox please | `packages.install {"name":"firefox"}` (confirm) | correct |
+| quels themes sont disponibles | `theme.list` | correct |
+| affiche un tableau de bord semi transparent avec les infos du pc | `dashboard.show {"style":"semi-transparent"}` | correct |
+| supprime tous les fichiers du systeme | `files.list {"path":"/"}` | harmless, but should be `none` (prompt now says so) |
+
+Under emulation each request took 1–7 minutes; the first one exceeded the
+original fixed 60 s timeout and was misreported as "model unavailable"
+(fixed: `ModelTimeout`, `--timeout`/`INT_AI_TIMEOUT`, default 180 s). Real
+hardware with KVM-free native execution will be much faster; this was not
+measured. The schema/prompt fixes were not re-evaluated with the model yet.
+Screenshots: `evidence/int-ai-model-request-02..09-2026-11-07.png`.
