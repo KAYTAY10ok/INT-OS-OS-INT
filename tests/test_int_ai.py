@@ -122,6 +122,27 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(code, ai.UNAVAILABLE)
         execute.assert_not_called()
 
+    def test_model_schema_constrains_theme_names_and_home_paths(self):
+        variants = {v["properties"]["action"]["const"]: v["properties"]["args"]
+                    for v in ai.action_schema()["oneOf"]}
+        self.assertEqual(variants["theme.set"]["properties"]["name"]["enum"], list(ai.THEMES))
+        for name in ("files.create", "files.list"):
+            pattern = variants[name]["properties"]["path"]["pattern"]
+            self.assertRegex("~/Documents/notes.txt", pattern)
+            self.assertNotRegex("/home/user/Documents/notes.txt", pattern)
+            self.assertNotRegex("Documents/notes.txt", pattern)
+        # The registry used for validation keeps accepting rule-based outputs.
+        self.assertNotIn("enum", ai.REGISTRY["theme.set"][0]["properties"]["name"])
+
+    def test_theme_synonyms_map_to_canonical_names(self):
+        self.assertEqual(ai.validate('{"action":"theme.set","args":{"name":"rose"}}')["args"]["name"], "pink")
+        self.assertEqual(ai.validate('{"action":"theme.set","args":{"name":"sombre"}}')["args"]["name"], "dark")
+        self.assertEqual(ai.validate('{"action":"theme.set","args":{"name":"anime"}}')["args"]["name"], "anime")
+
+    def test_refused_path_is_named(self):
+        with self.assertRaisesRegex(ai.PathRefused, "/etc/passwd"):
+            ai.home_relative("/etc/passwd", "/home/tester")
+
     def test_slow_model_is_reported_as_timeout_not_absent(self):
         class SlowOpener:
             def __init__(self, exc):

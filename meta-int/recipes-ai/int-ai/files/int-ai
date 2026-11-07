@@ -78,10 +78,29 @@ REGISTRY = {
 }
 
 
+# Canonical theme names (the int-theme presets). The model may only choose one
+# of these; French or English synonyms from the offline rules map onto them.
+THEMES = ("dark", "light", "blue", "pink", "anime")
+# Paths given by the model must be written relative to the home with "~/".
+MODEL_PATH_PATTERN = r"^~/[^\x00]{1,%d}$" % (MAX_PATH - 2)
+
+
+def _model_args(name, args):
+    """Tighten an action's arguments for constrained decoding only."""
+    props = dict(args.get("properties", {}))
+    if name == "theme.set":
+        props["name"] = {"type": "string", "enum": list(THEMES)}
+    for key in ("path",):
+        if key in props:
+            props[key] = {"type": "string", "pattern": MODEL_PATH_PATTERN, "maxLength": MAX_PATH}
+    return dict(args, properties=props)
+
+
 def action_schema():
     """JSON schema given to llama-server: exactly one registry action."""
     variants = []
     for name, (args, _policy, _desc) in REGISTRY.items():
+        args = _model_args(name, args)
         variants.append({
             "type": "object",
             "properties": {"action": {"const": name}, "args": args},
@@ -177,7 +196,11 @@ def validate(candidate):
     if not isinstance(name, str) or name not in REGISTRY:
         raise Invalid("unknown action %r" % (name,))
     _check(candidate["args"], REGISTRY[name][0], name)
-    return {"action": name, "args": dict(candidate["args"])}
+    args = dict(candidate["args"])
+    if name == "theme.set":
+        # Map French/English synonyms (e.g. "rose") onto the canonical preset name.
+        args["name"] = THEME_WORDS.get(args["name"], args["name"])
+    return {"action": name, "args": args}
 
 
 def policy_of(action):
@@ -315,8 +338,9 @@ SYSTEM_PROMPT = (
     "JSON action. Output only JSON, no text. Actions:\n"
     "theme.set{name} theme.list{} theme.current{} system.status{} files.list{path} "
     "files.create{path,content} (inside the user's home only) security.check{} packages.install{name} "
-    "dashboard.show{style}. Theme names are lowercase (dark, blue, pink, anime). If the request does not "
-    "match one action, output {\"action\":\"none\",\"args\":{}}.\n"
+    "dashboard.show{style}. Theme names: dark, light, blue, pink, anime (French rose=pink, bleu=blue, "
+    "sombre=dark, clair=light). Paths always start with ~/ (the user's home), e.g. ~/Documents/notes.txt. "
+    "If the request does not match one action, output {\"action\":\"none\",\"args\":{}}.\n"
     "Example: \"mets le thème bleu\" -> {\"action\":\"theme.set\",\"args\":{\"name\":\"blue\"}}"
 )
 
@@ -458,7 +482,7 @@ def home_relative(path, home):
                 rest = path[len(base.rstrip("/")) + 1:]
                 break
         if rest is None:
-            raise PathRefused("path outside your home")
+            raise PathRefused("path outside your home: %s" % path)
     else:
         rest = path
     parts = [p for p in rest.split("/") if p not in ("", ".")]
