@@ -17,6 +17,10 @@
     "meta-wayland": {
       "url": "https://codeberg.org/flk/meta-wayland.git",
       "revision": "2b97daa23e0e612a087ea54b150bd0b8e0ff9378"
+    },
+    "meta-browser": {
+      "url": "https://github.com/OSSystems/meta-browser",
+      "revision": "0715454e29ac38fb0a25bdbb1e0e26fdc4dc7ae3"
     }
   },
   "kernel": {

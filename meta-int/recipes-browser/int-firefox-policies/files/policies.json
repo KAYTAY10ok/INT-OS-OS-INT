@@ -1,0 +1,78 @@
+{
+  "policies": {
+    "DisableTelemetry": true,
+    "DisableFirefoxStudies": true,
+    "DisableFeedbackCommands": true,
+    "DisableAppUpdate": true,
+    "DontCheckDefaultBrowser": true,
+    "OverrideFirstRunPage": "",
+    "OverridePostUpdatePage": "",
+    "DNSOverHTTPS": {
+      "Enabled": false,
+      "Locked": false
+    },
+    "EnableTrackingProtection": {
+      "Value": true,
+      "Category": "strict",
+      "Locked": false
+    },
+    "HttpsOnlyMode": "enabled",
+    "OfferToSaveLoginsDefault": false,
+    "AutofillAddressEnabled": false,
+    "AutofillCreditCardEnabled": false,
+    "NetworkPrediction": false,
+    "CaptivePortal": false,
+    "SearchSuggestEnabled": false,
+    "FirefoxSuggest": {
+      "WebSuggestions": false,
+      "SponsoredSuggestions": false,
+      "ImproveSuggest": false,
+      "Locked": false
+    },
+    "FirefoxHome": {
+      "SponsoredTopSites": false,
+      "Locked": false
+    },
+    "UserMessaging": {
+      "ExtensionRecommendations": false,
+      "FeatureRecommendations": false,
+      "UrlbarInterventions": false,
+      "SkipOnboarding": true,
+      "MoreFromMozilla": false,
+      "FirefoxLabs": false,
+      "Locked": false
+    },
+    "GenerativeAI": {
+      "Enabled": false,
+      "Chatbot": false,
+      "Locked": false
+    },
+    "EncryptedMediaExtensions": {
+      "Enabled": false,
+      "Locked": false
+    },
+    "ExtensionSettings": {
+      "uBlock0@raymondhill.net": {
+        "installation_mode": "allowed"
+      }
+    },
+    "Preferences": {
+      "browser.newtabpage.activity-stream.showSponsored": {
+        "Value": false,
+        "Status": "default"
+      },
+      "browser.newtabpage.activity-stream.showSponsoredTopSites": {
+        "Value": false,
+        "Status": "default"
+      },
+      "network.connectivity-service.enabled": {
+        "Value": false,
+        "Status": "default"
+      },
+      "media.gmp-gmpopenh264.enabled": {
+        "Value": false,
+        "Status": "default"
+      }
+    }
+  }
+}
