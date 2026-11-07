@@ -10,6 +10,8 @@ A further guest test rejected an RPM signed by an untrusted key; see
 [wrong-key validation](validation-feed-wrong-key-vm-2026-11-06.md). Another
 rejected metadata with a missing detached signature; see
 [missing-signature validation](validation-feed-missing-signature-vm-2026-11-06.md).
+Another rejected signed metadata modified after signing; see
+[altered-metadata validation](validation-feed-altered-repomd-vm-2026-11-06.md).
 Other rejection and recovery tests remain outstanding. The current minimal
 images do not contain RPM/DNF runtime tools.
 The console and virtual desktop milestones have since passed their recorded VM
@@ -225,6 +227,9 @@ also retaining version 1.0; see
 [wrong-key validation](validation-feed-wrong-key-vm-2026-11-06.md). A separate
 guest rejected metadata with a missing signature while retaining version 1.0;
 see [missing-signature validation](validation-feed-missing-signature-vm-2026-11-06.md).
+Another rejected modified `repomd.xml` after a valid-signature control, also
+retaining version 1.0; see
+[altered-metadata validation](validation-feed-altered-repomd-vm-2026-11-06.md).
 Other negative cases below remain to be tested in the guest.
 
 Create a tiny no-scriptlet package `int-feed-probe`, versions `1` and `2`,
