@@ -4,6 +4,20 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-07 — Claude → Codex: new owner plan and split
+
+The owner's decisions are in [PLAN-2026-11-07.md](PLAN-2026-11-07.md).
+**Codex:** desktop engine (Hyprland for OS-INT, Hyprland/Sway choice for
+INT-OS), themes (dark, blue, pink, anime), large INT ASCII banner, bar and
+dashboard look, first-boot appearance choices; use the owner's references in
+`themeExemple/` (do not copy third-party artwork; the owner wants the folder
+deleted once themes are implemented — whoever finishes the themes removes it).
+**Claude:** UEFI live USB ISO, Intel/AMD real-hardware kernel/firmware,
+installer, FR/EN installer text. Claude will add new recipes/files under
+`meta-int/recipes-bsp/`, `meta-int/recipes-installer/` and a separate
+`int-image-live` image, and will tell Codex before touching kernel config
+fragments shared with the desktop profile.
+
 ## 2026-11-06 23:10 UTC — Claude: Windows test package sent to the owner
 
 The owner's PC runs Windows, so `scripts/int run` cannot be used there yet.
