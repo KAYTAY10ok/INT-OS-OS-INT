@@ -1,0 +1,17 @@
+[Unit]
+Description=Install the local AI model chosen at INT installation
+ConditionPathExists=/etc/int/install.conf
+ConditionPathExists=!/var/lib/int-ai/setup-done
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Does nothing unless /etc/int/install.conf sets INT_AI_MODEL to a size.
+# A failed download is retried at the next boot.
+ExecStart=/usr/bin/int-ai-model firstboot
+TimeoutStartSec=2h
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

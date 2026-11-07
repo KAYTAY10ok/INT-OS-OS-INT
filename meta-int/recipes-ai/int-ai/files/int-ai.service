@@ -1,0 +1,45 @@
+[Unit]
+Description=INT local AI model server (llama-server on 127.0.0.1)
+ConditionPathExists=/var/lib/int-ai/model.json
+After=local-fs.target
+
+[Service]
+Type=simple
+User=int-ai
+Group=int-ai
+# Verifies the pinned SHA-256 of the selected model, then execs llama-server
+# bound to 127.0.0.1 only, with no web UI and no built-in agent tools.
+ExecStart=/usr/bin/int-ai-model serve
+Restart=on-failure
+RestartSec=10s
+Nice=10
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+UMask=0077
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target
