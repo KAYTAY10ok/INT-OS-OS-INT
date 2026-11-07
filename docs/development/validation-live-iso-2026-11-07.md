@@ -96,3 +96,36 @@ boot). This looks specific to OVMF's handling of QEMU's own boot order; the
 installed system booted when the NVMe disk was given boot priority. Real-PC
 behaviour of the created entry is still to be observed. The desktop launch on
 an installed system was validated in the previous section (OE installer).
+
+## Update: OS-INT tools, local AI and LUKS2 encryption (evening build)
+
+ISO `int-image-live-qemux86-64.rootfs.iso` (1,774,190,592 bytes, SHA-256
+`c649eccc622806a0cc652a0dae5175a059a312585efe98efb9a505b4b48ac08c`), built
+from `main` with `packagegroup-int-osint` (incl. Tor 0.4.9.16), hardening,
+`int-ai` + llama.cpp, the AI question and the LUKS2 option. Same UEFI QEMU
+setup, encrypted OS-INT install with a throwaway passphrase:
+
+1. Installer: French, US keyboard, OS-INT, encryption yes, AI none. The
+   passphrase prompts no longer echo; two entries were compared; LUKS2 was
+   created, the system copied, the `INT Linux` firmware entry created
+   ([hidden passphrase](evidence/luks-install-hidden-passphrase-2026-11-07.png)).
+   An earlier build echoed the passphrase and asked once; fixed before this run.
+2. Installed boot: the unlock initramfs asked for the passphrase (hidden),
+   unlocked `/dev/mapper/introot`, and the system reached enrollment, login and
+   the desktop ([unlock](evidence/luks-boot-unlock-2026-11-07.png),
+   [desktop](evidence/luks-installed-desktop-2026-11-07.png)); QEMU exit 0.
+3. Second boot of the same disk: Nmap 7.95, Tor 0.4.9.16, TShark 4.6.8,
+   `llama-server` and `int-ai` present; WireGuard tools, exiftool 13.52;
+   `kernel.yama.ptrace_scope=1`, `kptr_restrict=2`; Tor service disabled;
+   `int-privacy status` reported the random-MAC policy, Tor disabled and the
+   nftables firewall active; `int-ai.service` disabled (no model),
+   `int-ai-setup` enabled; `int-ai etat du systeme` answered from the offline
+   parser with CPU/RAM/disk values; `/etc/int/install.conf` held the choices
+   ([tools](evidence/osint-tools-installed-2026-11-07.png),
+   [int-ai](evidence/osint-int-ai-status-2026-11-07.png)).
+
+Not tested: model download and llama-server inference (no model chosen, and
+the model hosts were not exercised from the guest), Tor connectivity, real
+Wi-Fi MAC randomisation, a wrong-passphrase retry at boot, recovery when the
+passphrase is lost (by design impossible). Minor: `ip` is not on the owner's
+PATH in the console shell.
