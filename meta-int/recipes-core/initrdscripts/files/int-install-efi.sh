@@ -39,6 +39,9 @@ msg() {
 		enc_no) echo "Non" ;;
 		passinfo) echo "Choisis la phrase secrete du disque (deux fois). Elle sera demandee au demarrage avec les MEMES touches qu'ici. Si elle est perdue, les donnees sont perdues." ;;
 		passretry) echo "Phrase secrete refusee ou differente, recommence." ;;
+		pass1) printf "Phrase secrete (invisible) : " ;;
+		pass2) printf "Retape-la pour verifier : " ;;
+		passshort) echo "Trop courte : au moins 8 caracteres." ;;
 		ai) echo "IA locale (super commande du systeme, fonctionne hors ligne) :" ;;
 		ai_none) echo "Aucune" ;;
 		ai_small) echo "Petite - Qwen2.5 1.5B (4 Go de RAM ou plus, ~1 Go a telecharger)" ;;
@@ -78,6 +81,9 @@ msg() {
 		enc_no) echo "No" ;;
 		passinfo) echo "Choose the disk passphrase (twice). It is asked at boot with the SAME keys as here. If it is lost, the data is lost." ;;
 		passretry) echo "Passphrase rejected or different, try again." ;;
+		pass1) printf "Passphrase (hidden): " ;;
+		pass2) printf "Type it again to verify: " ;;
+		passshort) echo "Too short: at least 8 characters." ;;
 		ai) echo "Local AI (system super command, works offline):" ;;
 		ai_none) echo "None" ;;
 		ai_small) echo "Small - Qwen2.5 1.5B (4 GB RAM or more, ~1 GB download)" ;;
@@ -243,6 +249,32 @@ if [ "$again" != "$choice" ]; then
 	exit 1
 fi
 
+# read_secret: read one line without echo into $secret (the console in the
+# initramfs is not a controlling terminal, so cryptsetup would echo it).
+read_secret() {
+	stty -echo 2>/dev/null
+	IFS= read -r secret || secret=""
+	stty echo 2>/dev/null
+	echo
+}
+
+# ask_passphrase: hidden entry, typed twice, compared; result in $PASSPHRASE.
+ask_passphrase() {
+	while :; do
+		msg pass1; read_secret; first=$secret
+		msg pass2; read_secret; second=$secret
+		if [ "${#first}" -lt 8 ]; then
+			msg passshort
+		elif [ "$first" != "$second" ]; then
+			msg passretry
+		else
+			PASSPHRASE=$first
+			first=""; second=""; secret=""
+			return 0
+		fi
+	done
+}
+
 # --- layout -----------------------------------------------------------------
 
 device=/dev/$TARGET
@@ -308,19 +340,19 @@ run mkfs.vfat -F 32 -n INT-EFI "$bootfs"
 rootdev=$rootfs
 if [ "$ENCRYPT" = 1 ]; then
 	msg passinfo
+	ask_passphrase
 	if [ "$DRY_RUN" = 1 ]; then
-		echo "RUN: cryptsetup luksFormat --type luks2 --pbkdf argon2id $rootfs"
-		echo "RUN: cryptsetup open --type luks2 $rootfs introot"
+		echo "RUN: cryptsetup luksFormat --type luks2 --pbkdf argon2id --key-file=- $rootfs (passphrase on stdin)"
+		echo "RUN: cryptsetup open --type luks2 --key-file=- $rootfs introot (passphrase on stdin)"
 	else
-		# cryptsetup asks for the passphrase twice on the console itself;
-		# the passphrase never appears in arguments, files or logs.
-		until cryptsetup -q luksFormat --type luks2 --pbkdf argon2id --label INT-CRYPT "$rootfs"; do
-			msg passretry
-		done
-		until cryptsetup open --type luks2 "$rootfs" introot; do
-			msg passretry
-		done
+		# The passphrase goes to cryptsetup only through a pipe from the shell
+		# builtin printf: never in arguments, environment, files or logs.
+		printf '%s' "$PASSPHRASE" | cryptsetup -q luksFormat --type luks2 --pbkdf argon2id \
+			--label INT-CRYPT --key-file=- "$rootfs" || fail "cryptsetup luksFormat"
+		printf '%s' "$PASSPHRASE" | cryptsetup open --type luks2 --key-file=- "$rootfs" introot \
+			|| fail "cryptsetup open"
 	fi
+	PASSPHRASE=""
 	rootdev=/dev/mapper/introot
 fi
 run mkfs.ext4 -F -q -L INT-ROOT "$rootdev"

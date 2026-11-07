@@ -21,10 +21,19 @@ luksunlock_run() {
 	while [ $tries -lt 5 ]; do
 		echo
 		echo "INT Linux - disque chiffre / encrypted disk"
-		if cryptsetup open --type luks2 "$dev" introot; then
+		# Hidden entry: the initramfs console is not a controlling terminal,
+		# so cryptsetup's own prompt would echo the passphrase.
+		printf "Phrase secrete / Passphrase: "
+		stty -echo 2>/dev/null
+		IFS= read -r secret || secret=""
+		stty echo 2>/dev/null
+		echo
+		if printf '%s' "$secret" | cryptsetup open --type luks2 --key-file=- "$dev" introot; then
+			secret=""
 			bootparam_root=/dev/mapper/introot
 			return 0
 		fi
+		secret=""
 		tries=$((tries + 1))
 	done
 	fatal "INT: could not unlock the encrypted disk"

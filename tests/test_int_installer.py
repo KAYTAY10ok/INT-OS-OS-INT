@@ -96,11 +96,13 @@ class InstallerTests(unittest.TestCase):
         self.assertNotIn("RUN:", result.stdout)
 
     def test_encrypted_os_int_install_uses_luks_no_swap_and_random_mac(self):
-        result = self.install(["2", "4", "2", "1", "2", "1", "1"])
+        result = self.install(["2", "4", "2", "1", "2", "1", "1", "secret-test-pass", "secret-test-pass"])
         out = result.stdout
         self.assertEqual(0, result.returncode, out + result.stderr)
         self.assertIn("RUN: parted -s /dev/nvme0n1 mkpart root ext4 512MiB 100%", out)
-        self.assertIn("RUN: cryptsetup luksFormat --type luks2 --pbkdf argon2id /dev/nvme0n1p2", out)
+        self.assertIn("RUN: cryptsetup luksFormat --type luks2 --pbkdf argon2id --key-file=- /dev/nvme0n1p2", out)
+        # The passphrase is read hidden and never printed.
+        self.assertNotIn("secret-test-pass", out)
         self.assertIn("RUN: mkfs.ext4 -F -q -L INT-ROOT /dev/mapper/introot", out)
         self.assertIn("RUN: mount /dev/mapper/introot /tgt_root", out)
         self.assertIn("RUN: cryptsetup close introot", out)
@@ -115,7 +117,7 @@ class InstallerTests(unittest.TestCase):
         # The passphrase is never passed on a command line.
         for line in out.splitlines():
             if "cryptsetup" in line:
-                self.assertNotIn("--key-file", line)
+                self.assertNotIn("secret", line)
 
     def test_int_os_keeps_hardware_mac_and_plain_layout(self):
         result = self.install(["2", "4", "1", "2", "1", "1", "1"])
@@ -124,6 +126,26 @@ class InstallerTests(unittest.TestCase):
         self.assertNotIn("cryptsetup", result.stdout)
         self.assertIn("INT_ENCRYPTED=0", result.stdout)
         self.assertIn("INT_AI_MODEL=none", result.stdout)
+
+    def test_passphrase_must_match_and_be_long_enough(self):
+        answers = ["2", "4", "2", "1", "1", "1", "1", "Qz7", "Qz7", "Wx9kPq2rT", "Wx9kPq2rU",
+                   "Vb4nMz8yL", "Vb4nMz8yL"]
+        result = self.install(answers)
+        self.assertEqual(0, result.returncode, result.stdout)
+        self.assertIn("Too short", result.stdout)
+        self.assertIn("Passphrase rejected or different", result.stdout)
+        for secret in ("Qz7", "Wx9kPq2r", "Vb4nMz8yL"):
+            self.assertNotIn(secret, result.stdout)
+
+    def test_scripts_never_put_the_passphrase_in_arguments(self):
+        for path in (SCRIPT, SCRIPT.with_name("luksunlock")):
+            text = path.read_text()
+            self.assertIn("--key-file=-", text)
+            self.assertIn("stty -echo", text)
+            for line in text.splitlines():
+                command = line.split("|")[-1]
+                if "cryptsetup" in command and ("PASSPHRASE" in command or "$secret" in command):
+                    self.fail(f"passphrase passed to cryptsetup on the command line: {line}")
 
 
 if __name__ == "__main__":
