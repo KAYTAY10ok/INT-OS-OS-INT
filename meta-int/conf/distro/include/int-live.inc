@@ -26,5 +26,7 @@ REQUIRED_DISTRO_FEATURES:pn-libxcb = ""
 REQUIRED_DISTRO_FEATURES:pn-libxau = ""
 REQUIRED_DISTRO_FEATURES:pn-libxdmcp = ""
 REQUIRED_DISTRO_FEATURES:pn-xtrans = ""
+# xorgproto failed package QA (unhandled-features-check) in the first attempt.
+REQUIRED_DISTRO_FEATURES:pn-xorgproto = ""
 # Hyprland image loading: PNG/JPEG/WebP only (no HEIF/JPEG XL/librsvg builds).
 PACKAGECONFIG:pn-hyprgraphics = ""
