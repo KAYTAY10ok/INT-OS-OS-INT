@@ -10,3 +10,7 @@ LABELS_LIVE = "boot install"
 SRC_URI:append:pn-linux-yocto = " file://int-hardware.cfg"
 LINUX_VERSION_EXTENSION:pn-linux-yocto = "-int-live1"
 PR:pn-linux-yocto = "r3"
+# Live initramfs: OE live/install modules plus a writable memory overlay for
+# the live session (the OE default leaves the live root read-only, so owner
+# enrollment could not create an account).
+INITRAMFS_SCRIPTS = "initramfs-framework-base initramfs-module-setup-live initramfs-module-udev initramfs-module-install initramfs-module-install-efi int-live-overlay"

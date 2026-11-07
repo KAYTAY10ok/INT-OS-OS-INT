@@ -4,7 +4,10 @@ SUMMARY = "INT Linux live/installer ISO for real Intel/AMD PCs"
 DESCRIPTION = "UEFI live USB image of the shared desktop with real-hardware drivers and firmware. Boot entry 'boot' runs the live session; 'install' runs the OE disk installer. Build with --profile live."
 COMPATIBLE_MACHINE = "^qemux86-64$"
 
-IMAGE_FSTYPES = "live"
+# "iso" only: the extra "hddimg" from "live" is not needed and doubles the space.
+IMAGE_FSTYPES = "iso"
+# Hide kernel messages so the enrollment prompt stays readable.
+APPEND:append = " quiet loglevel=3"
 # A live rootfs must hold all kernel modules and common firmware.
 IMAGE_INSTALL:append = " \
     kernel-modules \
@@ -22,5 +25,7 @@ IMAGE_INSTALL:append = " \
     linux-firmware-ath11k \
     wpa-supplicant \
     iw \
+    wireless-regdb-static \
 "
-IMAGE_ROOTFS_EXTRA_SPACE = "524288"
+# The installer creates a disk-sized partition; the live rootfs needs little slack.
+IMAGE_ROOTFS_EXTRA_SPACE = "65536"

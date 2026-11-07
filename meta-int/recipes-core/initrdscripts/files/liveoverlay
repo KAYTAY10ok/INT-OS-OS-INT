@@ -1,0 +1,20 @@
+#!/bin/sh
+# INT live session: put an in-memory (tmpfs) writable layer over the
+# read-only live root filesystem, as live ISOs commonly do. Changes are lost
+# at shutdown. Only the "boot" live entry uses it; the installer does not.
+
+liveoverlay_enabled() {
+	[ "$bootparam_LABEL" = "boot" ]
+}
+
+liveoverlay_run() {
+	mkdir -p /live
+	mount -n -t tmpfs -o mode=0755 tmpfs /live || fatal "INT live: cannot create the memory layer"
+	mkdir -p /live/ro /live/upper /live/work /live/root
+	mount -n --move "$ROOTFS_DIR" /live/ro || fatal "INT live: cannot move the read-only root"
+	mount -n -t overlay overlay \
+		-o lowerdir=/live/ro,upperdir=/live/upper,workdir=/live/work /live/root \
+		|| fatal "INT live: cannot mount the writable overlay"
+	mount -n --move /live/root "$ROOTFS_DIR" || fatal "INT live: cannot use the overlay as root"
+	info "INT live: writable memory overlay ready"
+}
