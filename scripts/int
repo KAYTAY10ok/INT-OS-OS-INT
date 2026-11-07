@@ -82,9 +82,10 @@ def bootstrap(work):
 
 
 def build_directory(profile):
-    if profile not in ("core", "desktop", "feed", "live"):
+    if profile not in ("core", "desktop", "feed", "live", "browser"):
         raise RuntimeError(f"Unknown build profile: {profile}")
-    return {"core": "build", "desktop": "build-desktop", "feed": "build-feed", "live": "build-live"}[profile]
+    return {"core": "build", "desktop": "build-desktop", "feed": "build-feed", "live": "build-live",
+            "browser": "build-browser"}[profile]
 
 
 def configure(work, profile="core"):
@@ -126,15 +127,21 @@ require conf/distro/include/int-kernel-pins.inc
 include int-local.conf
 ''',
     }
-    if profile in ("desktop", "live"):
+    if profile in ("desktop", "live", "browser"):
         files["bblayers.conf"] = files["bblayers.conf"].replace(
             '/src/meta-int"', '/src/meta-int /work/sources/meta-wayland /src/meta-int-desktop"')
         files["local.conf"] = files["local.conf"].replace(
             "include int-local.conf", "require conf/distro/include/int-desktop.inc\ninclude int-local.conf")
-        if profile == "live":
+        if profile in ("live", "browser"):
             # Real-hardware UEFI live/installer ISO on top of the shared desktop.
             files["local.conf"] = files["local.conf"].replace(
                 "include int-local.conf", "require conf/distro/include/int-live.inc\ninclude int-local.conf")
+        if profile == "browser":
+            # OS-INT browser ISO: the live image plus Firefox from meta-browser.
+            files["bblayers.conf"] = files["bblayers.conf"].replace(
+                '/src/meta-int-desktop"', '/src/meta-int-desktop /work/sources/meta-browser/meta-firefox"')
+            files["local.conf"] = files["local.conf"].replace(
+                "include int-local.conf", "require conf/distro/include/int-browser.inc\ninclude int-local.conf")
     elif profile == "feed":
         files["local.conf"] = files["local.conf"].replace(
             "include int-local.conf", 'require conf/distro/include/int-feed-lab.inc\ninclude int-local.conf')
@@ -170,7 +177,7 @@ exec "$@"
 
 def parse_arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--profile", choices=["core", "desktop", "feed", "live"], default="core")
+    parser.add_argument("--profile", choices=["core", "desktop", "feed", "live", "browser"], default="core")
     parser.add_argument("command", choices=["bootstrap", "builder", "configure", "build", "shell", "check", "smoke", "core-check", "desktop-check", "graphics-check", "feed-check", "run"])
     parser.add_argument("target", nargs="?",
                         help="build target; for feed-check, the fixture disk directory followed by runner options")
@@ -213,7 +220,8 @@ def dispatch(args, work):
     elif args.command == "configure":
         configure(work, profile)
     elif args.command == "build":
-        target = args.target or {"core": "int-image-smoke", "desktop": "int-image-desktop-smoke", "feed": "rpm-native", "live": "int-image-live"}[profile]
+        target = args.target or {"core": "int-image-smoke", "desktop": "int-image-desktop-smoke", "feed": "rpm-native", "live": "int-image-live",
+                                 "browser": "int-image-osint-browser"}[profile]
         container(work, ["bitbake", target], profile=profile)
     elif args.command == "check":
         container(work, ["python3", "/src/scripts/check-config.py", "--profile", profile], profile=profile)

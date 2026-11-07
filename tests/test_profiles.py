@@ -139,6 +139,59 @@ class ProfileTests(unittest.TestCase):
             helper.dispatch(SimpleNamespace(profile='live', command='build', target=None), self.work)
             container.assert_called_once_with(self.work, ['bitbake', 'int-image-live'], profile='live')
 
+    def test_browser_profile_adds_firefox_layer_last_in_separate_directory(self):
+        for profile in ('core', 'desktop', 'feed', 'live'):
+            helper.configure(self.work, profile)
+        before = {path: path.read_bytes() for path in self.work.glob('build*/conf/*')}
+        helper.configure(self.work, 'browser')
+        self.assertEqual(before, {path: path.read_bytes() for path in before})
+        conf = self.work/'build-browser/conf'
+        live = self.work/'build-live/conf'
+        layers = (conf/'bblayers.conf').read_text()
+        self.assertEqual(layers, (live/'bblayers.conf').read_text().replace(
+            '/src/meta-int-desktop"', '/src/meta-int-desktop /work/sources/meta-browser/meta-firefox"'))
+        order = [layer.rsplit('/', 1)[-1] for layer in
+                 layers.split('BBLAYERS = "', 1)[1].split('"', 1)[0].split()]
+        self.assertEqual(order, ['meta', 'meta-oe', 'meta-python', 'meta-networking', 'meta-int',
+                                 'meta-wayland', 'meta-int-desktop', 'meta-firefox'])
+        self.assertNotIn('meta-clang', layers)
+        local = (conf/'local.conf').read_text()
+        self.assertEqual(local, (live/'local.conf').read_text().replace(
+            'include int-local.conf', 'require conf/distro/include/int-browser.inc\ninclude int-local.conf'))
+        self.assertLess(local.index('int-desktop.inc'), local.index('int-live.inc'))
+        self.assertLess(local.index('int-live.inc'), local.index('int-browser.inc'))
+        self.assertLess(local.index('int-browser.inc'), local.index('include int-local.conf'))
+        with mock.patch.object(helper, 'container') as container:
+            helper.dispatch(SimpleNamespace(profile='browser', command='build', target=None), self.work)
+            container.assert_called_once_with(self.work, ['bitbake', 'int-image-osint-browser'],
+                                              profile='browser')
+        with mock.patch.object(helper, 'docker') as docker:
+            helper.container(self.work, ['bitbake', 'example'], profile='browser')
+            command = docker.call_args.args[0]
+            self.assertIn('oe-init-build-env /work/build-browser', command[command.index('-ec')+1])
+        self.assertEqual('browser', helper.parse_arguments(['--profile', 'browser', 'build']).profile)
+
+    def test_browser_layer_source_is_locked_and_fetched_by_bootstrap(self):
+        source = helper.LOCK['sources']['meta-browser']
+        self.assertEqual('https://github.com/OSSystems/meta-browser', source['url'])
+        self.assertRegex(source['revision'], '^[0-9a-f]{40}$')
+        work = self.work/'fresh'
+        sources = helper.LOCK['sources']
+
+        def check_output(args, text):
+            name = Path(args[2]).name
+            return {'remote': sources[name]['url'] + '\n', 'rev-parse': sources[name]['revision'] + '\n',
+                    'status': ''}[args[3]]
+
+        with mock.patch.object(helper, 'run') as run, \
+                mock.patch.object(helper.subprocess, 'check_output', side_effect=check_output):
+            helper.bootstrap(work)
+        fetched = [call.args[0][-1] for call in run.call_args_list if 'fetch' in call.args[0]]
+        self.assertEqual([entry['revision'] for entry in sources.values()], fetched)
+        self.assertTrue((work/'sources/meta-browser').is_dir())
+        self.assertEqual(list(sources), [
+            'openembedded-core', 'bitbake', 'meta-openembedded', 'meta-wayland', 'meta-browser'])
+
 
 if __name__ == '__main__':
     unittest.main()
