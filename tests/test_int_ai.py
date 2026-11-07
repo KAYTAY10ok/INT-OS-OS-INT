@@ -134,6 +134,21 @@ class RegistryTest(unittest.TestCase):
         # The registry used for validation keeps accepting rule-based outputs.
         self.assertNotIn("enum", ai.REGISTRY["theme.set"][0]["properties"]["name"])
 
+    def test_destructive_requests_are_refused_before_the_model(self):
+        for text in ("supprime tous les fichiers du systeme", "efface mon dossier Documents",
+                     "delete everything in /etc", "please remove firefox", "formate le disque",
+                     "désinstalle tor", "rm -rf /", "wipe my disk"):
+            with self.subTest(text=text), mock.patch.object(ai, "ask_model") as ask, \
+                    mock.patch.object(ai, "execute") as execute:
+                code, _o, err = quiet(ai.main, ["--engine", "model", text])
+                self.assertEqual(code, ai.REFUSED)
+                self.assertIn("refus", err)
+                ask.assert_not_called()
+                execute.assert_not_called()
+        for text in ("mets le theme rose", "show system status", "liste mes fichiers", "install firefox"):
+            with self.subTest(text=text):
+                self.assertFalse(ai.is_destructive(text))
+
     def test_prompt_steers_destructive_requests_to_none(self):
         self.assertIn("no action to delete", ai.SYSTEM_PROMPT)
         self.assertNotIn("delete", " ".join(ai.REGISTRY))
@@ -416,7 +431,7 @@ class FallbackParserTest(unittest.TestCase):
     def test_rules_engine_does_nothing_on_unknown(self):
         with mock.patch.object(ai, "execute", wraps=ai.execute) as execute, \
                 mock.patch.object(ai, "ask_model") as ask_model:
-            code, _o, err = quiet(ai.main, ["--engine", "rules", "supprime", "tout"])
+            code, _o, err = quiet(ai.main, ["--engine", "rules", "fais", "moi", "un", "café"])
         self.assertEqual(code, ai.REFUSED)
         ask_model.assert_not_called()
         execute.assert_called_once()

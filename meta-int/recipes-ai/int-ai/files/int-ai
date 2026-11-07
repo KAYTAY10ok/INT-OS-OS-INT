@@ -317,6 +317,19 @@ def _r_create(m):
     return {"action": "files.create", "args": {"path": m["p"], "content": content}}
 
 
+# Destructive intents have no action in the registry. Refuse them before any
+# model call: a small model may otherwise map them to an unrelated action.
+DESTRUCTIVE = re.compile(
+    r"\b(?:supprim\w*|effac\w*|d[ée]trui\w*|formate\w*|vid(?:e|er|ez)\b|écrase\w*|ecrase\w*|"
+    r"d[ée]sinstall\w*|delete\w*|remove\w*|erase\w*|wipe\w*|destroy\w*|format\b|uninstall\w*|"
+    r"rm\b|shred\w*|kill\w*)",
+    re.IGNORECASE)
+
+
+def is_destructive(text):
+    return DESTRUCTIVE.search(text) is not None
+
+
 def parse_rules(text):
     """Deterministic offline parser. Returns an unvalidated action or None."""
     text = " ".join(text.strip().split())
@@ -961,6 +974,12 @@ def main(argv=None):
             return REFUSED
         if len(text) > MAX_REQUEST:
             err(t("demande trop longue", "request too long"))
+            return REFUSED
+        if is_destructive(text):
+            err(t("refusé : int-ai ne supprime, n'efface et ne désinstalle rien ; fais-le toi-même "
+                  "en connaissance de cause",
+                  "refused: int-ai never deletes, erases or uninstalls anything; do it yourself "
+                  "deliberately"))
             return REFUSED
         raw = parse_rules(text) if opts.engine in ("auto", "rules") else None
         if raw is None and opts.engine == "rules":

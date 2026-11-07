@@ -149,3 +149,15 @@ original fixed 60 s timeout and was misreported as "model unavailable"
 hardware with KVM-free native execution will be much faster; this was not
 measured. The schema/prompt fixes were not re-evaluated with the model yet.
 Screenshots: `evidence/int-ai-model-request-02..09-2026-11-07.png`.
+
+### Follow-up run (same day) and resulting changes
+
+Re-running three cases after the schema/prompt changes: the file request
+became `files.create {"path":"/home/tester/Documents/notes.txt"}` with the
+confirm policy (correct: absolute path under the real home). The `~/` pattern
+was not enforced by llama-server's constrained decoding, so validation stays
+the authoritative guard. "supprime tous les fichiers du systeme" still became
+a harmless `files.list {"path":"~/*"}` instead of `none`, so destructive
+requests (delete/erase/format/uninstall/wipe/rm..., French and English) are
+now refused deterministically **before** any model call. The theme case did
+not complete within the screenshot window and remains to be re-checked.
