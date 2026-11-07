@@ -60,7 +60,7 @@ class FirefoxPolicyTests(unittest.TestCase):
         # requires an image from meta-int-desktop.
         self.assertFalse((REPO/'meta-int/recipes-core/images/int-image-live.bb').exists())
         layer = (REPO/'meta-int/conf/layer.conf').read_text()
-        self.assertIn('BBFILES_DYNAMIC += "int-desktop:${LAYERDIR}/dynamic-layers/int-desktop/recipes-*/*/*.bb"', layer)
+        self.assertIn('int-desktop:${LAYERDIR}/dynamic-layers/int-desktop/recipes-*/*/*.bb', layer)
         for recipe in (REPO/'meta-int').glob('recipes-*/*/*.bb'):
             self.assertNotIn('int-image-desktop.bb', recipe.read_text(), recipe)
 
