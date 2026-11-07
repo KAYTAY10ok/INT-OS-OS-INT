@@ -1,0 +1,948 @@
+#!/usr/bin/env python3
+"""int-ai: INT local AI "super command".
+
+Turns one short request (French or English) into ONE structured action from a
+strict registry, checks it, asks for confirmation when the policy requires it,
+then runs it with fixed argv lists. It is a system agent, not a chat program.
+
+Sources of an action, in order:
+  1. --action JSON given by the caller;
+  2. the deterministic offline rules (a few common phrasings);
+  3. the local model through llama-server on the loopback interface, with
+     JSON-schema constrained decoding.
+Whatever the source, the action is validated again here. Anything unknown or
+malformed is refused and never executed. Model text never reaches a shell.
+"""
+import argparse
+import json
+import os
+import pwd
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+VERSION = "1.0"
+DEFAULT_PORT = 8765
+SERVER_HOSTS = ("127.0.0.1", "::1", "localhost")
+STATE_DIR = "/var/lib/int-ai"
+SETUID_BASELINE = STATE_DIR + "/setuid-baseline"
+INSTALL_CONF = "/etc/int/install.conf"
+MAX_REQUEST = 500
+MAX_CONTENT = 65536
+MAX_PATH = 4096
+LIST_LIMIT = 500
+
+# Exit codes.
+OK, FAILED, REFUSED, NOT_CONFIRMED, UNAVAILABLE = 0, 1, 2, 3, 4
+
+AUTO = "auto"        # read-only queries and appearance changes
+CONFIRM = "confirm"  # any other change, privileged scan or install: always asked
+
+NAME_PATTERN = r"^[a-z0-9][a-z0-9_-]{0,31}$"
+PACKAGE_PATTERN = r"^[a-z0-9][a-z0-9+._-]{0,99}$"
+
+
+def _obj(properties=None, required=()):
+    return {
+        "type": "object",
+        "properties": properties or {},
+        "required": list(required),
+        "additionalProperties": False,
+    }
+
+
+# The registry: action name -> (argument schema, policy, short description).
+REGISTRY = {
+    "theme.set": (_obj({"name": {"type": "string", "pattern": NAME_PATTERN}}, ["name"]), AUTO,
+                  "set the desktop theme"),
+    "theme.list": (_obj(), AUTO, "list the desktop themes"),
+    "theme.current": (_obj(), AUTO, "show the current theme"),
+    "system.status": (_obj(), AUTO, "CPU, memory, disk and temperatures"),
+    "files.list": (_obj({"path": {"type": "string", "minLength": 1, "maxLength": MAX_PATH}}, ["path"]),
+                   AUTO, "list a directory"),
+    "dashboard.show": (_obj({"style": {"type": "string", "pattern": NAME_PATTERN}}, ["style"]), AUTO,
+                       "show the desktop dashboard"),
+    "files.create": (_obj({"path": {"type": "string", "minLength": 1, "maxLength": MAX_PATH},
+                           "content": {"type": "string", "maxLength": MAX_CONTENT}},
+                          ["path", "content"]), CONFIRM, "create a new file in your home"),
+    "security.check": (_obj(), CONFIRM, "read-only integrity check of critical paths"),
+    "packages.install": (_obj({"name": {"type": "string", "pattern": PACKAGE_PATTERN}}, ["name"]),
+                         CONFIRM, "install a package"),
+    "none": (_obj(), AUTO, "request not understood: do nothing"),
+}
+
+
+def action_schema():
+    """JSON schema given to llama-server: exactly one registry action."""
+    variants = []
+    for name, (args, _policy, _desc) in REGISTRY.items():
+        variants.append({
+            "type": "object",
+            "properties": {"action": {"const": name}, "args": args},
+            "required": ["action", "args"],
+            "additionalProperties": False,
+        })
+    return {"oneOf": variants}
+
+
+# ---------------------------------------------------------------- messages
+
+def detect_language(environ=None, conf_path=INSTALL_CONF):
+    environ = os.environ if environ is None else environ
+    value = environ.get("INT_AI_LANG", "")
+    if not value:
+        try:
+            with open(conf_path, encoding="utf-8") as conf:
+                for line in conf:
+                    if line.startswith("INT_LANGUAGE="):
+                        value = line.split("=", 1)[1].strip().strip("'\"")
+        except OSError:
+            pass
+    if not value:
+        value = environ.get("LC_ALL") or environ.get("LC_MESSAGES") or environ.get("LANG") or ""
+    return "fr" if value.lower().startswith("fr") else "en"
+
+
+LANG = "en"
+
+
+def t(fr, en):
+    return fr if LANG == "fr" else en
+
+
+def out(text=""):
+    print(text)
+
+
+def err(text):
+    print("int-ai: " + text, file=sys.stderr)
+
+
+# ---------------------------------------------------------------- validation
+
+class Invalid(Exception):
+    pass
+
+
+def _check(value, schema, where):
+    kind = schema.get("type")
+    if kind == "object":
+        if not isinstance(value, dict):
+            raise Invalid(where + ": object expected")
+        props = schema.get("properties", {})
+        for key in value:
+            if not isinstance(key, str) or key not in props:
+                raise Invalid("%s: unexpected field %r" % (where, key))
+        for key in schema.get("required", []):
+            if key not in value:
+                raise Invalid("%s: missing field %r" % (where, key))
+        for key, sub in props.items():
+            if key in value:
+                _check(value[key], sub, where + "." + key)
+    elif kind == "string":
+        if not isinstance(value, str):
+            raise Invalid(where + ": string expected")
+        if "\x00" in value:
+            raise Invalid(where + ": NUL character")
+        if len(value) < schema.get("minLength", 0):
+            raise Invalid(where + ": too short")
+        if len(value) > schema.get("maxLength", 1 << 30):
+            raise Invalid(where + ": too long")
+        if "pattern" in schema and not re.fullmatch(schema["pattern"].strip("^$"), value):
+            raise Invalid(where + ": invalid value")
+    else:
+        raise Invalid(where + ": unsupported schema")
+
+
+def validate(candidate):
+    """Return a clean {"action", "args"} dict or raise Invalid."""
+    if isinstance(candidate, (str, bytes)):
+        if len(candidate) > MAX_CONTENT * 2:
+            raise Invalid("action too large")
+        try:
+            candidate = json.loads(candidate)
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise Invalid("not JSON: %s" % exc) from None
+    if not isinstance(candidate, dict):
+        raise Invalid("action must be a JSON object")
+    if set(candidate) != {"action", "args"}:
+        raise Invalid("action must have exactly the fields 'action' and 'args'")
+    name = candidate["action"]
+    if not isinstance(name, str) or name not in REGISTRY:
+        raise Invalid("unknown action %r" % (name,))
+    _check(candidate["args"], REGISTRY[name][0], name)
+    return {"action": name, "args": dict(candidate["args"])}
+
+
+def policy_of(action):
+    return REGISTRY[action["action"]][1]
+
+
+# ---------------------------------------------------------------- offline rules
+
+THEME_WORDS = {
+    "sombre": "dark", "noir": "dark", "dark": "dark", "black": "dark",
+    "bleu": "blue", "blue": "blue", "rose": "pink", "pink": "pink", "anime": "anime",
+    "clair": "light", "light": "light",
+}
+_ART = r"(?:(?:le|la|les|l'|un|une|des|du|the|a|an|my|mon|ma|mes)\s*)?"
+_Q = r"[\"'«“]?\s*"
+_QE = r"\s*[\"'»”]?"
+
+
+def _theme_name(word):
+    word = word.lower().strip()
+    return THEME_WORDS.get(word, word)
+
+
+RULES = []
+
+
+def rule(pattern):
+    def register(func):
+        RULES.append((re.compile(pattern, re.IGNORECASE | re.DOTALL), func))
+        return func
+    return register
+
+
+@rule(r"(?:quel(?:s|les?)?\s+(?:sont\s+)?(?:les\s+)?th[eè]mes(?:\s+disponibles)?|"
+      r"liste(?:r)?\s+(?:des\s+|les\s+)?th[eè]mes|th[eè]mes\s+disponibles|"
+      r"(?:list|show)\s+(?:the\s+|all\s+)?(?:available\s+)?themes|available\s+themes|which\s+themes)")
+def _r_theme_list(m):
+    return {"action": "theme.list", "args": {}}
+
+
+@rule(r"(?:quel\s+est\s+(?:le\s+)?th[eè]me(?:\s+actuel)?|th[eè]me\s+actuel|"
+      r"(?:what(?:'s|\s+is)\s+(?:the\s+|my\s+)?)?current\s+theme|which\s+theme(?:\s+is\s+(?:active|used))?)")
+def _r_theme_current(m):
+    return {"action": "theme.current", "args": {}}
+
+
+@rule(r"(?:(?:mets?|met|passe|change|active|applique|utilise)\s+(?:en\s+|le\s+|au\s+)?)?"
+      r"th[eè]me\s+(?:en\s+|à\s+|a\s+)?" + _Q + r"(?P<n>[\w-]+)" + _QE)
+def _r_theme_set_fr(m):
+    return {"action": "theme.set", "args": {"name": _theme_name(m["n"])}}
+
+
+@rule(r"(?:(?:set|change|switch|use|apply)\s+(?:the\s+|my\s+)?theme\s+(?:to\s+)?" + _Q + r"(?P<a>[\w-]+)" + _QE
+      + r"|(?:switch|change)\s+to\s+(?:the\s+)?(?P<b>[\w-]+)\s+theme|(?:use|apply)\s+(?:the\s+)?(?P<c>[\w-]+)\s+theme"
+      + r"|(?:passe|mets|met)\s+(?:en|le)\s+(?:mode\s+)?(?P<d>sombre|bleu|rose|clair|anime))")
+def _r_theme_set_en(m):
+    return {"action": "theme.set", "args": {"name": _theme_name(m["a"] or m["b"] or m["c"] or m["d"])}}
+
+
+@rule(r"(?:(?:l'?)?[ée]tat\s+du\s+syst[eè]me|statut\s+(?:du\s+)?syst[eè]me|[ée]tat\s+syst[eè]me|"
+      r"(?:system|machine)\s+status|status\s+(?:of\s+)?(?:the\s+)?system|how\s+is\s+my\s+(?:system|computer|pc)|"
+      r"(?:utilisation|usage)\s+(?:du\s+|de\s+la\s+|of\s+)?(?:cpu|processeur|ram|m[ée]moire|memory|disque|disk)|"
+      r"temp[ée]ratures?)")
+def _r_status(m):
+    return {"action": "system.status", "args": {}}
+
+
+@rule(r"(?:v[ée]rifi(?:e|er)\s+(?:la\s+)?s[ée]curit[ée](?:\s+du\s+syst[eè]me)?|"
+      r"(?:v[ée]rification|contr[oô]le|analyse|scan)\s+(?:de\s+|d')?(?:la\s+)?(?:s[ée]curit[ée]|int[ée]grit[ée])"
+      r"(?:\s+du\s+syst[eè]me)?|"
+      r"(?:security|integrity)\s+(?:check|scan|audit)|check\s+(?:the\s+)?(?:system\s+)?(?:security|integrity))")
+def _r_security(m):
+    return {"action": "security.check", "args": {}}
+
+
+@rule(r"(?:installe(?:r)?\s+(?:le\s+paquet\s+|le\s+logiciel\s+|le\s+programme\s+)?|"
+      r"install\s+(?:the\s+)?(?:package\s+)?)" + _Q + r"(?P<n>[A-Za-z0-9][A-Za-z0-9+._-]*)" + _QE)
+def _r_install(m):
+    return {"action": "packages.install", "args": {"name": m["n"].lower()}}
+
+
+@rule(r"(?:affiche(?:r)?|montre(?:r)?|ouvre|show|open|display)\s+" + _ART +
+      r"(?:tableau\s+de\s+bord|dashboard)(?:\s+(?:en\s+)?(?:style|mode|in)?\s*(?P<s>[\w-]+)(?:\s+style)?)?")
+def _r_dashboard(m):
+    style = (m["s"] or "default").lower()
+    return {"action": "dashboard.show", "args": {"style": style}}
+
+
+@rule(r"(?:liste(?:r)?|affiche(?:r)?|montre(?:r)?)\s+(?:mes\s+fichiers|les\s+fichiers\s+de\s+mon\s+dossier\s+personnel)")
+def _r_list_home(m):
+    return {"action": "files.list", "args": {"path": "~"}}
+
+
+@rule(r"list\s+my\s+files")
+def _r_list_home_en(m):
+    return {"action": "files.list", "args": {"path": "~"}}
+
+
+@rule(r"(?:liste(?:r)?\s+(?:les\s+fichiers\s+(?:de|du|dans)\s+|le\s+(?:dossier|r[ée]pertoire)\s+|le\s+contenu\s+de\s+)"
+      r"|list\s+(?:the\s+)?(?:files\s+in\s+|directory\s+|folder\s+|contents\s+of\s+)|ls\s+)"
+      r"(?:(?:le\s+)?(?:dossier|r[ée]pertoire|folder|directory)\s+)?" + _Q + r"(?P<p>\S+?)" + _QE)
+def _r_list(m):
+    return {"action": "files.list", "args": {"path": m["p"]}}
+
+
+@rule(r"(?:cr[ée]e(?:r)?|fais|make|create)\s+(?:un\s+|le\s+|a\s+|the\s+)?(?:nouveau\s+|new\s+)?(?:fichier|file)\s+"
+      + _Q + r"(?P<p>[^\s\"'«»“”]+)" + _QE +
+      r"(?:\s+(?:avec(?:\s+le\s+texte)?|contenant|qui\s+contient|with(?:\s+the\s+text)?|containing)\s+"
+      r"(?P<c>.*))?")
+def _r_create(m):
+    content = (m["c"] or "").strip()
+    if len(content) >= 2 and content[0] + content[-1] in ('""', "''", "«»", "“”"):
+        content = content[1:-1].strip()
+    return {"action": "files.create", "args": {"path": m["p"], "content": content}}
+
+
+def parse_rules(text):
+    """Deterministic offline parser. Returns an unvalidated action or None."""
+    text = " ".join(text.strip().split())
+    text = text.rstrip(" .!?")
+    text = re.sub(r"^(?:int-ai[:,]?\s+)?(?:(?:s'il\s+te\s+pla[iî]t|stp|svp|please)[,]?\s+)?", "", text,
+                  flags=re.IGNORECASE)
+    text = re.sub(r"\s*,?\s*(?:s'il\s+te\s+pla[iî]t|stp|svp|please)$", "", text, flags=re.IGNORECASE)
+    for regex, build in RULES:
+        match = regex.fullmatch(text)
+        if match:
+            return build(match)
+    return None
+
+
+# ---------------------------------------------------------------- local model
+
+SYSTEM_PROMPT = (
+    "You are the INT Linux system agent. Convert the user's request (French or English) into exactly ONE "
+    "JSON action. Output only JSON, no text. Actions:\n"
+    "theme.set{name} theme.list{} theme.current{} system.status{} files.list{path} "
+    "files.create{path,content} (inside the user's home only) security.check{} packages.install{name} "
+    "dashboard.show{style}. Theme names are lowercase (dark, blue, pink, anime). If the request does not "
+    "match one action, output {\"action\":\"none\",\"args\":{}}.\n"
+    "Example: \"mets le thème bleu\" -> {\"action\":\"theme.set\",\"args\":{\"name\":\"blue\"}}"
+)
+
+
+class ModelUnavailable(Exception):
+    pass
+
+
+def check_server_url(url):
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme != "http" or parsed.hostname not in SERVER_HOSTS:
+        raise ValueError("the model server must be http on the loopback interface")
+    return url.rstrip("/")
+
+
+def ask_model(text, server, timeout=60.0, opener=None):
+    """Ask llama-server for one constrained JSON action. Returns raw text."""
+    body = {
+        "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": text}],
+        "temperature": 0,
+        "max_tokens": 512,
+        "stream": False,
+        "response_format": {"type": "json_schema",
+                            "json_schema": {"name": "int_action", "strict": True, "schema": action_schema()}},
+    }
+    request = urllib.request.Request(
+        check_server_url(server) + "/v1/chat/completions",
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    # Never use a proxy for the loopback model server.
+    opener = opener or urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(request, timeout=timeout) as response:
+            reply = json.loads(response.read(1 << 20).decode("utf-8"))
+        return reply["choices"][0]["message"]["content"]
+    except (urllib.error.URLError, OSError, ValueError, KeyError, IndexError, TypeError) as exc:
+        raise ModelUnavailable(str(exc)) from None
+
+
+# ---------------------------------------------------------------- confirmation
+
+YES_WORDS = {"y", "yes", "o", "oui"}
+
+
+def describe(action):
+    args = action["args"]
+    name = action["action"]
+    if name == "files.create":
+        return t("Créer le fichier %s (%d octets)", "Create file %s (%d bytes)") % (
+            args["path"], len(args["content"].encode("utf-8")))
+    if name == "packages.install":
+        return t("Installer le paquet %s", "Install package %s") % args["name"]
+    if name == "security.check":
+        return t("Analyse d'intégrité en lecture seule (/etc/passwd, /etc/shadow, /etc/sudoers*, "
+                 "binaires setuid, /tmp)",
+                 "Read-only integrity scan (/etc/passwd, /etc/shadow, /etc/sudoers*, setuid binaries, /tmp)")
+    if name == "security.baseline":
+        return t("Enregistrer la liste actuelle des binaires setuid/setgid dans %s",
+                 "Record the current setuid/setgid binary list in %s") % SETUID_BASELINE
+    return REGISTRY.get(name, (None, None, name))[2]
+
+
+def confirm(action, assume_yes=False, stdin=None, ask=None, stream=None):
+    """Return True only after an explicit interactive yes. --yes never bypasses it."""
+    stdin = stdin or sys.stdin
+    stream = stream or sys.stdout
+    print(t("Action demandée :", "Requested action:"), file=stream)
+    print("  " + describe(action), file=stream)
+    print("  " + json.dumps(action, ensure_ascii=False, sort_keys=True), file=stream)
+    if assume_yes:
+        print(t("--yes ne remplace pas la confirmation pour cette action.",
+                "--yes does not replace confirmation for this action."), file=stream)
+    if ask is None:
+        if not stdin.isatty():
+            print(t("Confirmation impossible sans terminal : action refusée.",
+                    "Cannot confirm without a terminal: action refused."), file=stream)
+            return False
+        ask = input
+    try:
+        answer = ask(t("Confirmer ? [o/N] ", "Confirm? [y/N] "))
+    except EOFError:
+        return False
+    return answer.strip().lower() in YES_WORDS
+
+
+# ---------------------------------------------------------------- helpers
+
+def run_argv(argv, timeout=60):
+    """Run a fixed argv list, never through a shell."""
+    if not isinstance(argv, list) or not all(isinstance(a, str) for a in argv):
+        raise TypeError("argv must be a list of strings")
+    return subprocess.run(argv, shell=False, check=False, timeout=timeout,
+                          stdin=subprocess.DEVNULL, capture_output=True, text=True)
+
+
+def user_home():
+    """Home of the real user, from the account database (not $HOME)."""
+    return pwd.getpwuid(os.getuid()).pw_dir
+
+
+class PathRefused(Exception):
+    pass
+
+
+def home_relative(path, home):
+    """Validate a requested path and return its components relative to home.
+
+    Accepts '~/x', 'x' (relative to home) or an absolute path under home.
+    Refuses '..', empty components handled by normalisation, the home itself,
+    and anything outside home. Symlinks are refused later, at creation time.
+    """
+    if not isinstance(path, str) or not path or "\x00" in path or len(path) > MAX_PATH:
+        raise PathRefused("invalid path")
+    home = os.path.normpath(home)
+    real_home = os.path.realpath(home)
+    if path == "~" or path.startswith("~/"):
+        rest = path[2:]
+    elif path.startswith("~"):
+        raise PathRefused("only your own home (~) is allowed")
+    elif os.path.isabs(path):
+        rest = None
+        for base in (home, real_home):
+            if path == base or path.startswith(base.rstrip("/") + "/"):
+                rest = path[len(base.rstrip("/")) + 1:]
+                break
+        if rest is None:
+            raise PathRefused("path outside your home")
+    else:
+        rest = path
+    parts = [p for p in rest.split("/") if p not in ("", ".")]
+    if any(p == ".." for p in parts):
+        raise PathRefused("'..' is not allowed")
+    if not parts:
+        raise PathRefused("a file name is required")
+    for part in parts:
+        if len(part.encode("utf-8", "surrogateescape")) > 255:
+            raise PathRefused("name too long")
+    return real_home, parts
+
+
+def create_in_home(path, content, home):
+    """Create a NEW file under home, refusing symlinks on the whole walk."""
+    real_home, parts = home_relative(path, home)
+    flags_dir = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    fd = os.open(real_home, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0))
+    try:
+        for part in parts[:-1]:
+            try:
+                nfd = os.open(part, flags_dir, dir_fd=fd)
+            except FileNotFoundError:
+                raise PathRefused("parent directory does not exist") from None
+            except PermissionError:
+                raise
+            except OSError:
+                # ELOOP (symlink) or ENOTDIR: never follow or cross it.
+                raise PathRefused("parent is not a plain directory (symlinks refused)") from None
+            os.close(fd)
+            fd = nfd
+        flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0))
+        try:
+            ffd = os.open(parts[-1], flags, 0o644, dir_fd=fd)
+        except FileExistsError:
+            raise PathRefused("file already exists (never overwritten)") from None
+        with os.fdopen(ffd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+    finally:
+        os.close(fd)
+    return os.path.join(real_home, *parts)
+
+
+def resolve_list_path(path, home):
+    if path == "~":
+        return home
+    if path.startswith("~/"):
+        return os.path.join(home, path[2:])
+    if path.startswith("~"):
+        raise PathRefused("only your own home (~) is allowed")
+    if not os.path.isabs(path):
+        return os.path.join(home, path)
+    return path
+
+
+# ---------------------------------------------------------------- system.status
+
+def _read(path):
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        return handle.read()
+
+
+def cpu_times(proc):
+    fields = _read(os.path.join(proc, "stat")).splitlines()[0].split()[1:]
+    values = [int(v) for v in fields[:8]]
+    idle = values[3] + (values[4] if len(values) > 4 else 0)
+    return sum(values), idle
+
+
+def system_status(proc="/proc", sys_root="/sys", disks=("/",), interval=0.2):
+    status = {}
+    try:
+        total1, idle1 = cpu_times(proc)
+        if interval:
+            time.sleep(interval)
+        total2, idle2 = cpu_times(proc)
+        busy = (total2 - total1) - (idle2 - idle1)
+        status["cpu_percent"] = round(100.0 * busy / (total2 - total1), 1) if total2 > total1 else 0.0
+    except (OSError, ValueError, IndexError):
+        status["cpu_percent"] = None
+    try:
+        status["load"] = _read(os.path.join(proc, "loadavg")).split()[:3]
+    except OSError:
+        status["load"] = None
+    mem = {}
+    try:
+        for line in _read(os.path.join(proc, "meminfo")).splitlines():
+            key, _, value = line.partition(":")
+            if value.strip():
+                mem[key] = int(value.split()[0]) * 1024
+    except (OSError, ValueError):
+        pass
+    if "MemTotal" in mem:
+        available = mem.get("MemAvailable", mem.get("MemFree", 0))
+        status["memory"] = {"total": mem["MemTotal"], "used": mem["MemTotal"] - available}
+    disk = {}
+    for mount in disks:
+        try:
+            st = os.statvfs(mount)
+        except OSError:
+            continue
+        total = st.f_blocks * st.f_frsize
+        disk[mount] = {"total": total, "used": total - st.f_bfree * st.f_frsize}
+    status["disk"] = disk
+    temps = {}
+    thermal = os.path.join(sys_root, "class", "thermal")
+    try:
+        zones = sorted(z for z in os.listdir(thermal) if z.startswith("thermal_zone"))
+    except OSError:
+        zones = []
+    for zone in zones:
+        try:
+            label = _read(os.path.join(thermal, zone, "type")).strip() or zone
+            temps[label] = int(_read(os.path.join(thermal, zone, "temp")).strip()) / 1000.0
+        except (OSError, ValueError):
+            continue
+    hwmon = os.path.join(sys_root, "class", "hwmon")
+    try:
+        mons = sorted(os.listdir(hwmon))
+    except OSError:
+        mons = []
+    for mon in mons:
+        base = os.path.join(hwmon, mon)
+        try:
+            chip = _read(os.path.join(base, "name")).strip()
+            entries = sorted(e for e in os.listdir(base) if re.fullmatch(r"temp\d+_input", e))
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                value = int(_read(os.path.join(base, entry)).strip()) / 1000.0
+            except (OSError, ValueError):
+                continue
+            label_file = os.path.join(base, entry.replace("_input", "_label"))
+            try:
+                label = _read(label_file).strip()
+            except OSError:
+                label = entry.split("_")[0]
+            temps["%s/%s" % (chip, label)] = value
+    status["temperatures"] = temps
+    return status
+
+
+def _size(n):
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if n < 1024 or unit == "TiB":
+            return ("%d %s" % (n, unit)) if unit == "B" else ("%.1f %s" % (n, unit))
+        n /= 1024.0
+    return str(n)
+
+
+def print_status(status):
+    cpu = status.get("cpu_percent")
+    out("CPU   %s%%  load %s" % ("?" if cpu is None else cpu, " ".join(status.get("load") or ["?"])))
+    mem = status.get("memory")
+    if mem:
+        out(t("RAM   %s / %s", "RAM   %s / %s") % (_size(mem["used"]), _size(mem["total"])))
+    for mount, d in sorted(status.get("disk", {}).items()):
+        out(t("Disque %s  %s / %s", "Disk %s  %s / %s") % (mount, _size(d["used"]), _size(d["total"])))
+    temps = status.get("temperatures") or {}
+    if not temps:
+        out(t("Températures : aucun capteur", "Temperatures: no sensor"))
+    for label, value in sorted(temps.items()):
+        out("Temp  %s  %.1f °C" % (label, value))
+
+
+# ---------------------------------------------------------------- security.check
+
+SETUID_DIRS = ("/usr/bin", "/usr/sbin", "/usr/libexec", "/usr/lib", "/bin", "/sbin", "/usr/local/bin",
+               "/usr/local/sbin")
+TMP_DIRS = ("/tmp", "/var/tmp", "/dev/shm")
+SCAN_LIMIT = 20000
+
+
+def _finding(level, path, message):
+    return {"level": level, "path": path, "message": message}
+
+
+def _check_mode(root, path, forbidden, owner_uid=0, label=None, optional=False):
+    full = os.path.join(root, path.lstrip("/"))
+    try:
+        st = os.lstat(full)
+    except FileNotFoundError:
+        return [] if optional else [_finding("warning", path, "missing")]
+    except OSError as exc:
+        return [_finding("warning", path, "cannot stat: %s" % exc.strerror)]
+    found = []
+    if stat.S_ISLNK(st.st_mode):
+        found.append(_finding("critical", path, "is a symbolic link"))
+        return found
+    if st.st_uid != owner_uid:
+        found.append(_finding("critical", path, "owner uid %d (expected %d)" % (st.st_uid, owner_uid)))
+    bad = stat.S_IMODE(st.st_mode) & forbidden
+    if bad:
+        found.append(_finding("critical", path, "mode %04o has forbidden bits %04o" % (stat.S_IMODE(st.st_mode), bad)))
+    return found
+
+
+def scan_setuid(root, dirs=SETUID_DIRS, limit=SCAN_LIMIT):
+    found, seen = set(), 0
+    for top in dirs:
+        base = os.path.join(root, top.lstrip("/"))
+        if os.path.islink(base):
+            continue
+        for dirpath, dirnames, filenames in os.walk(base, followlinks=False):
+            for name in filenames:
+                seen += 1
+                if seen > limit:
+                    return sorted(found), True
+                full = os.path.join(dirpath, name)
+                try:
+                    st = os.lstat(full)
+                except OSError:
+                    continue
+                if stat.S_ISREG(st.st_mode) and st.st_mode & (stat.S_ISUID | stat.S_ISGID):
+                    found.add(full if root == "/" else "/" + os.path.relpath(full, root))
+    return sorted(found), False
+
+
+def read_baseline(path):
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return {line.strip() for line in handle if line.strip().startswith("/")}
+    except OSError:
+        return None
+
+
+def security_check(root="/", baseline_path=SETUID_BASELINE, tmp_dirs=TMP_DIRS, setuid_dirs=SETUID_DIRS):
+    findings = []
+    no_write = stat.S_IWGRP | stat.S_IWOTH
+    findings += _check_mode(root, "/etc/passwd", no_write | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    findings += _check_mode(root, "/etc/group", no_write)
+    findings += _check_mode(root, "/etc/shadow", no_write | stat.S_IRWXO)
+    findings += _check_mode(root, "/etc/gshadow", no_write | stat.S_IRWXO, optional=True)
+    findings += _check_mode(root, "/etc/sudoers", no_write | stat.S_IRWXO, optional=True)
+    sudoers_d = os.path.join(root, "etc/sudoers.d")
+    if os.path.isdir(sudoers_d) and not os.path.islink(sudoers_d):
+        findings += _check_mode(root, "/etc/sudoers.d", no_write)
+        try:
+            names = sorted(os.listdir(sudoers_d))
+        except OSError:
+            names = []
+        for name in names:
+            findings += _check_mode(root, "/etc/sudoers.d/" + name, no_write | stat.S_IRWXO)
+    current, truncated = scan_setuid(root, setuid_dirs)
+    if truncated:
+        findings.append(_finding("warning", "setuid", "scan stopped after %d files" % SCAN_LIMIT))
+    baseline = read_baseline(baseline_path)
+    if baseline is None:
+        findings.append(_finding("info", baseline_path,
+                                 "no setuid baseline recorded (%d setuid/setgid files found)" % len(current)))
+    else:
+        for path in sorted(set(current) - baseline):
+            findings.append(_finding("critical", path, "setuid/setgid file not in baseline"))
+        for path in sorted(baseline - set(current)):
+            findings.append(_finding("info", path, "baseline setuid/setgid file is gone"))
+    seen = 0
+    for top in tmp_dirs:
+        base = os.path.join(root, top.lstrip("/"))
+        if not os.path.isdir(base) or os.path.islink(base):
+            continue
+        for dirpath, dirnames, filenames in os.walk(base, followlinks=False):
+            for name in filenames:
+                seen += 1
+                if seen > SCAN_LIMIT:
+                    break
+                full = os.path.join(dirpath, name)
+                try:
+                    st = os.lstat(full)
+                except OSError:
+                    continue
+                if stat.S_ISREG(st.st_mode) and st.st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH):
+                    shown = full if root == "/" else "/" + os.path.relpath(full, root)
+                    findings.append(_finding("warning", shown, "executable file in temporary directory"))
+    return {"findings": findings, "setuid": current}
+
+
+def print_security(report):
+    findings = report["findings"]
+    if not [f for f in findings if f["level"] != "info"]:
+        out(t("Aucun problème détecté.", "No problem found."))
+    for f in findings:
+        out("[%s] %s: %s" % (f["level"], f["path"], f["message"]))
+    out(t("Rapport uniquement : rien n'a été modifié.", "Report only: nothing was changed."))
+
+
+def record_baseline(path=SETUID_BASELINE, root="/"):
+    current, truncated = scan_setuid(root)
+    if truncated:
+        raise RuntimeError("setuid scan incomplete")
+    os.makedirs(os.path.dirname(path), mode=0o755, exist_ok=True)
+    tmp = path + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write("".join(p + "\n" for p in current))
+    os.replace(tmp, path)
+    return current
+
+
+# ---------------------------------------------------------------- execution
+
+def _external(command, argv_tail, missing_fr, missing_en):
+    path = shutil.which(command)
+    if not path:
+        err(t(missing_fr, missing_en))
+        return UNAVAILABLE
+    try:
+        result = run_argv([path] + argv_tail)
+    except subprocess.TimeoutExpired:
+        err(t("%s ne répond pas", "%s did not answer") % command)
+        return FAILED
+    if result.stdout:
+        sys.stdout.write(result.stdout)
+    if result.stderr:
+        sys.stderr.write(result.stderr)
+    return OK if result.returncode == 0 else FAILED
+
+
+def execute(action, home=None):
+    name, args = action["action"], action["args"]
+    if name == "theme.set":
+        return _external("int-theme", ["set", args["name"]],
+                         "commande int-theme absente : l'interface des thèmes du bureau n'est pas installée",
+                         "int-theme command missing: the desktop theme interface is not installed")
+    if name == "theme.list":
+        return _external("int-theme", ["list"],
+                         "commande int-theme absente : l'interface des thèmes du bureau n'est pas installée",
+                         "int-theme command missing: the desktop theme interface is not installed")
+    if name == "theme.current":
+        return _external("int-theme", ["current"],
+                         "commande int-theme absente : l'interface des thèmes du bureau n'est pas installée",
+                         "int-theme command missing: the desktop theme interface is not installed")
+    if name == "dashboard.show":
+        return _external("int-dashboard", ["show", args["style"]],
+                         "tableau de bord non disponible (commande int-dashboard absente)",
+                         "dashboard not available (int-dashboard command missing)")
+    if name == "system.status":
+        disks = ["/"]
+        home_dir = home or user_home()
+        if os.path.isdir(home_dir):
+            disks.append(home_dir)
+        print_status(system_status(disks=disks))
+        return OK
+    if name == "files.list":
+        home_dir = home or user_home()
+        try:
+            target = resolve_list_path(args["path"], home_dir)
+            with os.scandir(target) as entries:
+                rows = sorted(entries, key=lambda e: e.name)
+        except PathRefused as exc:
+            err(str(exc))
+            return REFUSED
+        except OSError as exc:
+            err("%s: %s" % (args["path"], exc.strerror))
+            return FAILED
+        for entry in rows[:LIST_LIMIT]:
+            try:
+                st = entry.stat(follow_symlinks=False)
+            except OSError:
+                continue
+            kind = "d" if stat.S_ISDIR(st.st_mode) else "l" if stat.S_ISLNK(st.st_mode) else "-"
+            out("%s %10s  %s" % (kind, _size(st.st_size), entry.name))
+        if len(rows) > LIST_LIMIT:
+            out(t("... %d entrées de plus", "... %d more entries") % (len(rows) - LIST_LIMIT))
+        return OK
+    if name == "files.create":
+        if os.geteuid() == 0:
+            err(t("files.create refusé en root : lancez int-ai avec votre compte",
+                  "files.create refused as root: run int-ai as your user"))
+            return REFUSED
+        try:
+            created = create_in_home(args["path"], args["content"], home or user_home())
+        except PathRefused as exc:
+            err(t("refusé : ", "refused: ") + str(exc))
+            return REFUSED
+        except OSError as exc:
+            err("%s: %s" % (args["path"], exc.strerror))
+            return FAILED
+        out(t("Fichier créé : ", "File created: ") + created)
+        return OK
+    if name == "security.check":
+        print_security(security_check())
+        return OK
+    if name == "packages.install":
+        err(t("refusé : le dépôt de paquets INT n'existe pas encore, rien n'a été installé",
+              "refused: the INT package feed does not exist yet, nothing was installed"))
+        return UNAVAILABLE
+    if name == "none":
+        err(t("demande non comprise : rien n'a été fait", "request not understood: nothing was done"))
+        return REFUSED
+    err("unknown action")
+    return REFUSED
+
+
+def prepare(action, home=None):
+    """Normalise and pre-check an action before showing it. May raise PathRefused."""
+    if action["action"] == "files.create":
+        real_home, parts = home_relative(action["args"]["path"], home or user_home())
+        action = {"action": "files.create",
+                  "args": {"path": os.path.join(real_home, *parts), "content": action["args"]["content"]}}
+    return action
+
+
+def handle(action, assume_yes=False, dry_run=False, home=None, ask=None, stdin=None):
+    """Policy gate + execution for an already validated action."""
+    try:
+        action = prepare(action, home)
+    except PathRefused as exc:
+        err(t("refusé : ", "refused: ") + str(exc))
+        return REFUSED
+    if policy_of(action) != AUTO or dry_run:
+        if dry_run:
+            out(json.dumps(action, ensure_ascii=False, sort_keys=True))
+            out("policy: " + policy_of(action))
+            return OK
+        if not confirm(action, assume_yes=assume_yes, ask=ask, stdin=stdin):
+            out(t("Annulé : rien n'a été fait.", "Cancelled: nothing was done."))
+            return NOT_CONFIRMED
+    else:
+        out("> " + json.dumps(action, ensure_ascii=False, sort_keys=True))
+    return execute(action, home=home)
+
+
+def main(argv=None):
+    global LANG
+    LANG = detect_language()
+    parser = argparse.ArgumentParser(
+        prog="int-ai",
+        description="INT local AI super command: one request -> one checked system action.")
+    parser.add_argument("request", nargs="*", help="request in French or English")
+    parser.add_argument("--action", help="run this JSON action instead of interpreting a request")
+    parser.add_argument("--engine", choices=("auto", "rules", "model"), default="auto",
+                        help="auto: offline rules then local model (default)")
+    parser.add_argument("--server", default=os.environ.get("INT_AI_SERVER", "http://127.0.0.1:%d" % DEFAULT_PORT),
+                        help="llama-server URL (loopback only)")
+    parser.add_argument("--dry-run", action="store_true", help="show the checked action, do not run it")
+    parser.add_argument("--yes", "-y", action="store_true",
+                        help="accepted for scripts; never bypasses confirmation of changes")
+    parser.add_argument("--list-actions", action="store_true", help="print the action registry")
+    parser.add_argument("--schema", action="store_true", help="print the JSON schema given to the model")
+    parser.add_argument("--record-security-baseline", action="store_true",
+                        help="record the setuid/setgid baseline (root, always confirmed)")
+    parser.add_argument("--version", action="version", version="int-ai " + VERSION)
+    opts = parser.parse_args(argv)
+
+    if opts.schema:
+        out(json.dumps(action_schema(), indent=2, sort_keys=True))
+        return OK
+    if opts.list_actions:
+        for name, (args, policy, desc) in REGISTRY.items():
+            fields = ",".join(args["properties"])
+            out("%-17s %-8s %s" % ("%s{%s}" % (name, fields), policy, desc))
+        return OK
+    if opts.record_security_baseline:
+        action = {"action": "security.baseline", "args": {}}
+        if os.geteuid() != 0:
+            err(t("il faut être root (sudo)", "root is required (sudo)"))
+            return REFUSED
+        if not confirm(action, assume_yes=opts.yes):
+            out(t("Annulé : rien n'a été fait.", "Cancelled: nothing was done."))
+            return NOT_CONFIRMED
+        current = record_baseline()
+        out(t("%d fichiers enregistrés dans %s", "%d files recorded in %s") % (len(current), SETUID_BASELINE))
+        return OK
+
+    if opts.action is not None:
+        raw = opts.action
+    else:
+        text = " ".join(opts.request).strip()
+        if not text:
+            parser.print_usage(sys.stderr)
+            return REFUSED
+        if len(text) > MAX_REQUEST:
+            err(t("demande trop longue", "request too long"))
+            return REFUSED
+        raw = parse_rules(text) if opts.engine in ("auto", "rules") else None
+        if raw is None and opts.engine == "rules":
+            raw = {"action": "none", "args": {}}
+        if raw is None:
+            try:
+                raw = ask_model(text, opts.server)
+            except ValueError as exc:
+                err(str(exc))
+                return REFUSED
+            except ModelUnavailable:
+                err(t("modèle local indisponible (service int-ai arrêté ou aucun modèle installé) ; "
+                      "seules les demandes simples sont comprises hors ligne",
+                      "local model unavailable (int-ai service stopped or no model installed); "
+                      "only simple requests are understood offline"))
+                return UNAVAILABLE
+    try:
+        action = validate(raw)
+    except Invalid as exc:
+        err(t("action refusée, non exécutée : ", "action refused, not executed: ") + str(exc))
+        return REFUSED
+    return handle(action, assume_yes=opts.yes, dry_run=opts.dry_run)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
