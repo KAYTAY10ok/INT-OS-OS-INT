@@ -332,12 +332,19 @@ def check_server_url(url):
     return url.rstrip("/")
 
 
-def ask_model(text, server, timeout=60.0, opener=None):
+class ModelTimeout(Exception):
+    """The model server is running but answered too slowly."""
+
+
+DEFAULT_TIMEOUT = 180.0
+
+
+def ask_model(text, server, timeout=DEFAULT_TIMEOUT, opener=None):
     """Ask llama-server for one constrained JSON action. Returns raw text."""
     body = {
         "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": text}],
         "temperature": 0,
-        "max_tokens": 512,
+        "max_tokens": 256,
         "stream": False,
         "response_format": {"type": "json_schema",
                             "json_schema": {"name": "int_action", "strict": True, "schema": action_schema()}},
@@ -354,7 +361,13 @@ def ask_model(text, server, timeout=60.0, opener=None):
         with opener.open(request, timeout=timeout) as response:
             reply = json.loads(response.read(1 << 20).decode("utf-8"))
         return reply["choices"][0]["message"]["content"]
-    except (urllib.error.URLError, OSError, ValueError, KeyError, IndexError, TypeError) as exc:
+    except TimeoutError as exc:
+        raise ModelTimeout(str(exc)) from None
+    except urllib.error.URLError as exc:
+        if isinstance(exc.reason, TimeoutError):
+            raise ModelTimeout(str(exc)) from None
+        raise ModelUnavailable(str(exc)) from None
+    except (OSError, ValueError, KeyError, IndexError, TypeError) as exc:
         raise ModelUnavailable(str(exc)) from None
 
 
@@ -882,6 +895,9 @@ def main(argv=None):
     parser.add_argument("--server", default=os.environ.get("INT_AI_SERVER", "http://127.0.0.1:%d" % DEFAULT_PORT),
                         help="llama-server URL (loopback only)")
     parser.add_argument("--dry-run", action="store_true", help="show the checked action, do not run it")
+    parser.add_argument("--timeout", type=float,
+                        default=float(os.environ.get("INT_AI_TIMEOUT", DEFAULT_TIMEOUT)),
+                        help="seconds to wait for the local model (default 180)")
     parser.add_argument("--yes", "-y", action="store_true",
                         help="accepted for scripts; never bypasses confirmation of changes")
     parser.add_argument("--list-actions", action="store_true", help="print the action registry")
@@ -926,10 +942,16 @@ def main(argv=None):
             raw = {"action": "none", "args": {}}
         if raw is None:
             try:
-                raw = ask_model(text, opts.server)
+                raw = ask_model(text, opts.server, timeout=opts.timeout)
             except ValueError as exc:
                 err(str(exc))
                 return REFUSED
+            except ModelTimeout:
+                err(t("le modèle local répond trop lentement (délai de %d s dépassé) ; réessaie, "
+                      "augmente --timeout ou choisis un modèle plus petit",
+                      "the local model answered too slowly (%d s timeout); retry, raise --timeout "
+                      "or choose a smaller model") % opts.timeout)
+                return UNAVAILABLE
             except ModelUnavailable:
                 err(t("modèle local indisponible (service int-ai arrêté ou aucun modèle installé) ; "
                       "seules les demandes simples sont comprises hors ligne",

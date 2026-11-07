@@ -122,6 +122,31 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(code, ai.UNAVAILABLE)
         execute.assert_not_called()
 
+    def test_slow_model_is_reported_as_timeout_not_absent(self):
+        class SlowOpener:
+            def __init__(self, exc):
+                self.exc = exc
+
+            def open(self, request, timeout):
+                self.timeout = timeout
+                raise self.exc
+
+        for exc in (TimeoutError("timed out"), ai.urllib.error.URLError(TimeoutError("timed out"))):
+            opener = SlowOpener(exc)
+            with self.subTest(exc=exc), self.assertRaises(ai.ModelTimeout):
+                ai.ask_model("x", "http://127.0.0.1:8765", timeout=7, opener=opener)
+            self.assertEqual(opener.timeout, 7)
+        with self.assertRaises(ai.ModelUnavailable):
+            ai.ask_model("x", "http://127.0.0.1:8765",
+                         opener=SlowOpener(ai.urllib.error.URLError(ConnectionRefusedError())))
+        with mock.patch.object(ai, "ask_model", side_effect=ai.ModelTimeout("slow")) as ask, \
+                mock.patch.object(ai, "execute") as execute:
+            code, _o, err = quiet(ai.main, ["--engine", "model", "--timeout", "900", "anything"])
+        self.assertEqual(code, ai.UNAVAILABLE)
+        self.assertIn("900", err)
+        self.assertEqual(ask.call_args.kwargs["timeout"], 900.0)
+        execute.assert_not_called()
+
     def test_server_must_be_loopback(self):
         for url in ("http://127.0.0.1:8765", "http://localhost:1", "http://[::1]:8765"):
             ai.check_server_url(url)
