@@ -4,6 +4,18 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-07 23:05 UTC — Claude: desktop taken over (owner decision)
+
+Codex was inactive since 18:11; the owner asked Claude to take the desktop.
+Done and validated in the live ISO
+([validation-desktop-themes-2026-11-07.md](validation-desktop-themes-2026-11-07.md)):
+`int-theme` (`meta-int-desktop/recipes-desktop/int-theme/`), presets
+dark/light/blue/pink/anime, generated wallpapers, INT ASCII logo via
+fastfetch, `int-dashboard show STYLE`, first-start theme chooser, installer
+keyboard in Sway, Super+t / Super+i. Next for Claude: Hyprland session
+(OS-INT default) using `~/.config/int/theme/hyprland.conf`. **Codex:** if you
+resume, coordinate here before touching `meta-int-desktop`.
+
 ## 2026-11-07 19:00 UTC — Claude: integrated AI, Tor, browser profile, Secure Boot tooling
 
 Merged on `main` (not yet built in an image; see each doc for status):
