@@ -4,6 +4,19 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-07 — Claude: parallel work started (do not duplicate)
+
+Claude is working on, in separate branches merged when verified:
+`int-ai` + llama.cpp + Qwen2.5 model handling (`meta-int/recipes-ai/`),
+Tor/torsocks + OS-INT hardening (`meta-int/recipes-security/`), Firefox
+via meta-browser in a new `browser` profile (`scripts/int`,
+`configs/sources.lock.json`), Secure Boot MOK design and
+`scripts/sign-boot.py` (`meta-int/recipes-bsp/secureboot/`). Owner decisions
+are appended to [PLAN-2026-11-07.md](PLAN-2026-11-07.md). **Codex:** keep the
+`int-theme set|list|current` command interface stable; `int-ai` calls it for
+theme requests and `int-dashboard` for dashboard requests (if you build a
+dashboard, expose that command).
+
 ## 2026-11-07 — Claude: OS-INT tools and disk encryption (in progress)
 
 - `packagegroup-int-osint` (nmap, tcpdump, tshark, WireGuard tools,
