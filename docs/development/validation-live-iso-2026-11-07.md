@@ -70,3 +70,29 @@ key events through QMP and took screen captures.
   target disk. Missing tools noticed: `lsblk`.
 - Only QEMU devices were exercised: real Wi-Fi, touchpads, sound, GPUs,
   suspend and NVIDIA remain untested.
+
+## Update: INT French/English installer (same day, later build)
+
+ISO rebuilt with `int-installer` replacing OE's install-efi module (SHA-256
+recorded in the commit that adds this section is the 17:02 UTC build).
+Same UEFI QEMU setup (raw ISO as USB stick, empty 16 GiB NVMe, fresh NVRAM):
+
+1. GRUB "install" entry → bilingual language prompt, then French menus:
+   keyboard (Swiss French chosen), edition (OS-INT chosen), numbered disk
+   list showing `/dev/nvme0n1 16 GiB QEMU NVMe Ctrl`, warning, and re-typed
+   number confirmation ([questions](evidence/int-installer-questions-2026-11-07.png)).
+2. Layout created: 512 MiB EFI, 12,959 MiB ext4, 2,913 MiB swap (RAM-sized);
+   system copied; `efibootmgr` created `Boot0003* INT Linux
+   HD(1,GPT,...)/\EFI\BOOT\BOOTX64.EFI`, then "Installation reussie"
+   ([firmware entry](evidence/int-installer-firmware-entry-2026-11-07.png)).
+3. Installed system booted from NVMe: hostname `os-int` from the edition
+   choice, enrollment and login worked, and the Swiss French console keymap
+   was active (the test's US key codes produced QWERTZ characters)
+   ([installed](evidence/int-installer-installed-os-int-2026-11-07.png)).
+
+Open point: after the next power-on, OVMF no longer listed `INT Linux` and
+started its UEFI shell before the disk (the NVRAM order came from the USB
+boot). This looks specific to OVMF's handling of QEMU's own boot order; the
+installed system booted when the NVMe disk was given boot priority. Real-PC
+behaviour of the created entry is still to be observed. The desktop launch on
+an installed system was validated in the previous section (OE installer).

@@ -329,9 +329,15 @@ msg bootentry
 if [ "$DRY_RUN" = 1 ]; then
 	echo "RUN: efibootmgr -c -d $device -p 1 -L INT Linux -l \\EFI\\BOOT\\BOOTX64.EFI"
 else
-	[ -d /sys/firmware/efi/efivars ] && ! grep -q efivarfs /proc/mounts && \
-		mount -t efivarfs efivarfs /sys/firmware/efi/efivars 2>/dev/null
-	if ! efibootmgr -q -c -d "$device" -p 1 -L "INT Linux" -l '\EFI\BOOT\BOOTX64.EFI' >/dev/null 2>&1; then
+	if [ -d /sys/firmware/efi ] && ! grep -q " efivarfs " /proc/mounts; then
+		mount -t efivarfs efivarfs /sys/firmware/efi/efivars || echo "efivarfs: mount failed"
+	fi
+	# Show the firmware's answer: a silent failure would leave the PC unbootable
+	# on firmwares that do not fall back to the removable path.
+	if efibootmgr -c -d "$device" -p 1 -L "INT Linux" -l '\EFI\BOOT\BOOTX64.EFI' 2>&1 | tail -n 4 \
+			&& efibootmgr 2>/dev/null | grep -q "INT Linux"; then
+		:
+	else
 		msg bootwarn
 	fi
 fi
