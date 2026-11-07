@@ -169,3 +169,39 @@ class SessionTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SessionEngineTest(unittest.TestCase):
+    SCRIPT = ROOT / "meta-int-desktop/recipes-desktop/int-desktop-config/files/int-session"
+
+    def run_session(self, *args, home, path="/usr/bin:/bin"):
+        env = {"HOME": str(home), "PATH": path}
+        return subprocess.run(["sh", str(self.SCRIPT), *args], env=env, capture_output=True, text=True, timeout=10)
+
+    def test_choose_engine_and_refuse_missing_hyprland(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            result = self.run_session("sway", home=home)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((home / ".config/int/session").read_text(), "sway\n")
+            result = self.run_session("hyprland", home=home)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("not installed", result.stderr)
+            fake = home / "bin"
+            fake.mkdir()
+            (fake / "Hyprland").write_text("#!/bin/sh\n")
+            (fake / "Hyprland").chmod(0o755)
+            result = self.run_session("hyprland", home=home, path=f"{fake}:/usr/bin:/bin")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((home / ".config/int/session").read_text(), "hyprland\n")
+            self.assertEqual(self.run_session("bogus", home=home).returncode, 2)
+
+    def test_start_script_prefers_hyprland_only_for_os_int(self):
+        start = (ROOT / "meta-int-desktop/recipes-desktop/int-desktop-config/files/start-int-desktop").read_text()
+        self.assertIn("INT_EDITION=", start)
+        self.assertIn("os-int", start)
+        self.assertIn("Hyprland --config", start)
+        self.assertIn("sway --config", start)
+        hypr = (ROOT / "meta-int-desktop/recipes-desktop/int-desktop-config/files/hyprland.conf").read_text()
+        self.assertIn("source = ~/.config/int/theme/hyprland.conf", hypr)
+        self.assertIn("bind = $mod, I, exec, int-dashboard show", hypr)
