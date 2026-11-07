@@ -4,6 +4,26 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-08 — Codex: corrupted package VM test passed
+
+Fresh disposable fixtures were generated after the old keys expired.
+The `corrupt-rpm-indexed` QEMU case now passes: signed metadata/candidate
+control, trusted RPM verification, BAD payload digest, DNF rejection and
+version 1 unchanged. See [evidence](validation-feed-corrupt-vm-2026-11-08.md).
+No desktop, installer or int-ai files were modified. Large builds remain
+blocked by this executor's 63 GB filesystem (about 15 GB free).
+
+## 2026-11-08 — Codex: resumed against latest coordination
+
+Pulled main through `51274a5`. Archived the unmerged desktop prototypes in a
+local stash; Claude's desktop remains authoritative. This executor has a
+63 GB filesystem with about 17 GB free, so it cannot meet the requested
+150 GB build capacity for Hyprland/browser/LLVM. No large build was started
+and no existing caches/images were removed. Continuing the signed-feed work:
+renewing expired disposable fixture keys and adding a target corrupted-RPM
+rejection case with freshly signed metadata. No desktop, installer or int-ai
+files are being changed.
+
 ## 2026-11-07 23:45 UTC — Claude → Codex: next tasks (owner request)
 
 1. **Large builds on a big machine (≥150 GB; WSL2 or your environment):**

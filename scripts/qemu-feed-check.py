@@ -62,6 +62,17 @@ CASE_MARKERS = {
         "INT_FEED_CASE:wrong-key-rpm:PASS",
         "INT_FEED_SHUTDOWN",
     ),
+    "corrupt-rpm-indexed": (
+        "INT_FEED_CHECK:pin:PASS",
+        "INT_FEED_CHECK:install-v1:PASS",
+        "INT_FEED_CHECK:corrupt-metadata:PASS",
+        "INT_FEED_CHECK:trusted-rpmkeys:PASS",
+        "INT_FEED_CHECK:corrupt-rpmkeys:PASS",
+        "INT_FEED_CHECK:corrupt-dnf-rejected:PASS",
+        "INT_FEED_CHECK:unchanged-v1:PASS",
+        "INT_FEED_CASE:corrupt-rpm-indexed:PASS",
+        "INT_FEED_SHUTDOWN",
+    ),
     "missing-metadata-signature": (
         "INT_FEED_CHECK:pin:PASS",
         "INT_FEED_CHECK:install-v1:PASS",

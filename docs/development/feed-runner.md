@@ -63,3 +63,6 @@ fingerprint must come from an independent trusted record. The public fixtures
 and test key expire and are never production credentials. Other negative DNF
 cases, complete metadata-chain auditing, network feeds, anti-replay, production
 key custody and interruption recovery are outside this runner's present scope.
+
+The `corrupt-rpm-indexed` case also tests rejection of payload corruption with
+freshly signed metadata; see [VM evidence](validation-feed-corrupt-vm-2026-11-08.md).

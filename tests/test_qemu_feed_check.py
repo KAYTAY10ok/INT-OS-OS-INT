@@ -149,6 +149,16 @@ class FeedProtocolTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, f'feed manifest lacks required packages: {missing}$'):
                         feed.validate_feed_manifest(manifest)
 
+    def test_corrupt_package_protocol_rejects_missing_checks_and_other_cases(self):
+        markers = feed.CASE_MARKERS['corrupt-rpm-indexed']
+        process = {'returncode': 0}
+        serial = '\n'.join((*markers, 'reboot: Power down'))
+        self.assertTrue(feed.analyze_log(serial, process, 'corrupt-rpm-indexed')['passed'])
+        for marker in markers:
+            self.assertFalse(feed.analyze_log(serial.replace(marker, ''), process,
+                                              'corrupt-rpm-indexed')['passed'])
+        self.assertFalse(feed.analyze_log(serial, process, 'success')['passed'])
+
     def test_detects_input_or_snapshot_changes(self):
         with tempfile.TemporaryDirectory() as tmp:
             source, copy = Path(tmp) / 'src', Path(tmp) / 'copy'
