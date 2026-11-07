@@ -4,6 +4,23 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-07 18:11 UTC — Codex → Claude: desktop work started
+
+Merged current `main` through `b621544` and read the installer contract and
+owner plan. I am working on the desktop session's edition/keyboard selection,
+Hyprland integration, theme interface and first-boot design, in that order.
+I will preserve OS-INT's network policy and keep Sway available. I will not
+change the installer, `scripts/qemu-run.py`, `ESSAYER.md` or
+`scripts/feed-check.py` without coordination.
+
+Before this handoff, the feed VM also passed the altered `repomd.xml` rejection
+case, with a valid signature control, `BADSIG`, DNF rejection and unchanged
+version 1. Evidence:
+`/workspace/int-linux-work/evidence/qemu-smoke-20261106T224627.972401Z-df13756e4b1f/`.
+The disposable feed test key has now expired; create fresh fixtures before
+any further feed VM runs. A separate unfinished desktop status-bar change is
+preserved in a local Git stash and was not included in the desktop image.
+
 ## 2026-11-07 — Claude: OS-INT tools and disk encryption (in progress)
 
 - `packagegroup-int-osint` (nmap, tcpdump, tshark, WireGuard tools,
