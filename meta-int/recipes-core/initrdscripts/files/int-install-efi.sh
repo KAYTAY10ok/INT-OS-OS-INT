@@ -39,6 +39,11 @@ msg() {
 		enc_no) echo "Non" ;;
 		passinfo) echo "Choisis la phrase secrete du disque (deux fois). Elle sera demandee au demarrage avec les MEMES touches qu'ici. Si elle est perdue, les donnees sont perdues." ;;
 		passretry) echo "Phrase secrete refusee ou differente, recommence." ;;
+		ai) echo "IA locale (super commande du systeme, fonctionne hors ligne) :" ;;
+		ai_none) echo "Aucune" ;;
+		ai_small) echo "Petite - Qwen2.5 1.5B (4 Go de RAM ou plus, ~1 Go a telecharger)" ;;
+		ai_large) echo "Grande - Qwen2.5 7B (16 Go de RAM ou plus, ~5 Go a telecharger)" ;;
+		ai_note) echo "Le modele sera telecharge au premier demarrage avec Internet." ;;
 		disks) echo "Disques disponibles (le disque choisi sera ENTIEREMENT efface) :" ;;
 		nodisk) echo "Aucun disque d'installation trouve (en dehors de la cle live). Installation annulee." ;;
 		choose) echo "Tape le numero puis Entree (0 = annuler) :" ;;
@@ -73,6 +78,11 @@ msg() {
 		enc_no) echo "No" ;;
 		passinfo) echo "Choose the disk passphrase (twice). It is asked at boot with the SAME keys as here. If it is lost, the data is lost." ;;
 		passretry) echo "Passphrase rejected or different, try again." ;;
+		ai) echo "Local AI (system super command, works offline):" ;;
+		ai_none) echo "None" ;;
+		ai_small) echo "Small - Qwen2.5 1.5B (4 GB RAM or more, ~1 GB download)" ;;
+		ai_large) echo "Large - Qwen2.5 7B (16 GB RAM or more, ~5 GB download)" ;;
+		ai_note) echo "The model is downloaded at first boot when online." ;;
 		disks) echo "Available disks (the chosen disk will be COMPLETELY erased):" ;;
 		nodisk) echo "No installation disk found (besides the live stick). Installation aborted." ;;
 		choose) echo "Type the number, then Enter (0 = cancel):" ;;
@@ -193,6 +203,20 @@ echo "1) $(msg enc_yes)"
 echo "2) $(msg enc_no)"
 ask 2
 case "$answer" in 0) msg cancel; exit 1 ;; 1) ENCRYPT=1 ;; 2) ENCRYPT=0 ;; esac
+
+# Local AI model size. The research-licensed 3B model is not offered here.
+mem_kb_ai=$(awk '/^MemTotal:/ {print $2}' "$MEMINFO" 2>/dev/null)
+msg ai
+echo "1) $(msg ai_none)"
+echo "2) $(msg ai_small)"
+echo "3) $(msg ai_large)"
+ask 3
+case "$answer" in 0) msg cancel; exit 1 ;; 1) AI_MODEL=none ;; 2) AI_MODEL=1.5b ;; 3) AI_MODEL=7b ;; esac
+if [ "$AI_MODEL" != none ]; then
+	msg ai_note
+	[ "${mem_kb_ai:-0}" -lt 3500000 ] && [ "$AI_MODEL" = 1.5b ] && echo "!! RAM < 4 GB"
+	[ "${mem_kb_ai:-0}" -lt 14000000 ] && [ "$AI_MODEL" = 7b ] && echo "!! RAM < 16 GB"
+fi
 
 DISKS=$(list_disks)
 if [ -z "$DISKS" ]; then
@@ -346,6 +370,7 @@ INT_KEYMAP=$KEYMAP
 INT_XKB_LAYOUT=$XKB_LAYOUT
 INT_XKB_VARIANT=$XKB_VARIANT
 INT_ENCRYPTED=$ENCRYPT
+INT_AI_MODEL=$AI_MODEL
 EOF
 [ "$DRY_RUN" = 1 ] || : > /tgt_root/etc/vconsole.conf
 write /tgt_root/etc/vconsole.conf <<EOF

@@ -45,13 +45,24 @@ class FirefoxPolicyTests(unittest.TestCase):
 
     def test_browser_image_extends_live_without_modifying_it(self):
         image = IMAGE.read_text()
-        self.assertTrue(image.startswith('require recipes-core/images/int-image-live.bb\n'))
+        self.assertIn('\nrequire ../../../int-desktop/recipes-core/images/int-image-live.bb\n', image)
+        live = IMAGE.parent / '../../../int-desktop/recipes-core/images/int-image-live.bb'
+        self.assertTrue(live.resolve().is_file())
         for package in ('firefox', 'int-firefox-policies'):
             self.assertRegex(image, rf'(?m)^\s+{package}\s*\\$')
-        self.assertNotIn('firefox', (REPO/'meta-int/recipes-core/images/int-image-live.bb').read_text())
+        self.assertNotIn('firefox', live.read_text())
         layer = (REPO/'meta-int/conf/layer.conf').read_text()
         self.assertIn('BBFILES_DYNAMIC += "firefox-browser-layer:${LAYERDIR}/dynamic-layers/'
                       'firefox-browser-layer/recipes-*/*/*.bb"', layer)
+
+    def test_live_image_is_parsed_only_with_the_desktop_layer(self):
+        # meta-int alone (core/feed profiles) must not contain a recipe that
+        # requires an image from meta-int-desktop.
+        self.assertFalse((REPO/'meta-int/recipes-core/images/int-image-live.bb').exists())
+        layer = (REPO/'meta-int/conf/layer.conf').read_text()
+        self.assertIn('BBFILES_DYNAMIC += "int-desktop:${LAYERDIR}/dynamic-layers/int-desktop/recipes-*/*/*.bb"', layer)
+        for recipe in (REPO/'meta-int').glob('recipes-*/*/*.bb'):
+            self.assertNotIn('int-image-desktop.bb', recipe.read_text(), recipe)
 
 
 if __name__ == '__main__':

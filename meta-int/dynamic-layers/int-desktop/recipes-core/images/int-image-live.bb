@@ -31,6 +31,9 @@ IMAGE_INSTALL:append = " \
     util-linux-lsblk \
     packagegroup-int-osint \
     int-luks-initrd \
+    int-ai \
+    int-ai-setup \
+    llama-cpp \
 "
 # The installer creates a disk-sized partition; the live rootfs needs little slack.
 IMAGE_ROOTFS_EXTRA_SPACE = "65536"

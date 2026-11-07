@@ -156,12 +156,14 @@ class SysctlTests(unittest.TestCase):
         for key, value in expected.items():
             self.assertEqual(values.get(key), value, key)
 
-    def test_yama_is_optional_until_the_kernel_enables_it(self):
+    def test_yama_is_enforced_with_the_live_kernel_option(self):
+        # The hardening package ships only in the live ISO, whose kernel
+        # fragment enables Yama, so a missing sysctl must now be reported.
         values = self.values()
-        self.assertEqual(values.get('-kernel.yama.ptrace_scope'), '1')
-        fragments = ''.join(p.read_text() for p in (ROOT / 'meta-int/recipes-kernel/linux/files').glob('*.cfg'))
-        if 'CONFIG_SECURITY_YAMA=y' in fragments:
-            self.fail('Yama is now enabled: drop the "-" so a failure is reported')
+        self.assertEqual(values.get('kernel.yama.ptrace_scope'), '1')
+        self.assertNotIn('-kernel.yama.ptrace_scope', values)
+        fragment = (ROOT / 'meta-int/recipes-kernel/linux/files/int-hardware.cfg').read_text()
+        self.assertIn('CONFIG_SECURITY_YAMA=y', fragment)
 
     def test_recipe_installs_drop_in_and_no_service(self):
         text = (HARDENING / 'int-osint-hardening.bb').read_text()
