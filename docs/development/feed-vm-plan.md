@@ -1,12 +1,13 @@
 # Isolated DNF feed VM: proposed test plan
 
 Status: the experimental image and guest helper have passed a positive local
-DNF install/update test and separate unsigned-package, wrong-key package and
-missing metadata signature rejection tests in QEMU; see
+DNF install/update test and separate unsigned-package, wrong-key package,
+missing metadata signature and altered metadata rejection tests in QEMU; see
 [positive validation](validation-feed-vm-2026-11-06.md),
 [unsigned-package validation](validation-feed-unsigned-vm-2026-11-06.md) and
 [wrong-key validation](validation-feed-wrong-key-vm-2026-11-06.md), and
-[missing-signature validation](validation-feed-missing-signature-vm-2026-11-06.md).
+[missing-signature validation](validation-feed-missing-signature-vm-2026-11-06.md)
+and [altered-metadata validation](validation-feed-altered-repomd-vm-2026-11-06.md).
 Other DNF rejection cases have not yet been run. The existing core and desktop
 image validations do not qualify this plan.
 The prerequisites, signing limitations and complete negative-case rationale
@@ -43,7 +44,8 @@ assuming this is sufficient.
 The test-only oneshot service runs as root on the serial console, then shuts
 down the disposable VM. It requires a read-only `/dev/vdb`, a single
 `int_feed_fingerprint=FULL_40_HEX` and an `int_feed_case` of `success`,
-`unsigned-rpm`, `wrong-key-rpm` or `missing-metadata-signature` on the kernel
+`unsigned-rpm`, `wrong-key-rpm`, `missing-metadata-signature` or
+`altered-repomd` on the kernel
 command line. It checks the independent pin
 before importing a key, installs
 version 1.0, updates to 2.0 and repeats the update, checking the RPM version
@@ -55,7 +57,10 @@ and candidate, requires strict `rpmkeys` and DNF rejection, and confirms
 version 1.0 remains installed. The wrong-key case also verifies a trusted RPM
 as a positive `rpmkeys` control. The missing-signature case checks a valid
 signed metadata control, then requires DNF to refuse the absent detached
-signature and confirms version 1.0 remains installed. Other negative cases still need to be implemented and
+signature and confirms version 1.0 remains installed. The altered-metadata
+case verifies the original signature, demonstrates `BADSIG` on the modified
+metadata, and requires DNF rejection with version 1.0 unchanged. Other
+negative cases still need to be implemented and
 must never be inferred from the success path. Do not unlock root, install a reusable credential,
 enable a remote login, or include this test service in normal images.
 
