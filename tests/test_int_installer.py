@@ -37,7 +37,7 @@ class InstallerTests(unittest.TestCase):
                               capture_output=True, text=True, env=env, timeout=30)
 
     def test_french_install_plan_on_nvme_excludes_live_stick(self):
-        result = self.install(["1", "1", "2", "1", "1"])
+        result = self.install(["1", "1", "2", "2", "1", "1"])
         out = result.stdout
         self.assertEqual(0, result.returncode, out + result.stderr)
         self.assertIn("Installation d'INT Linux", out)
@@ -62,20 +62,20 @@ class InstallerTests(unittest.TestCase):
         self.assertIn("swap    4096 MiB", out)
 
     def test_wrong_confirmation_cancels_before_any_command(self):
-        result = self.install(["2", "4", "1", "1", "3"])
+        result = self.install(["2", "4", "1", "2", "1", "3"])
         self.assertNotEqual(0, result.returncode)
         self.assertIn("No disk was modified", result.stdout)
         self.assertNotIn("RUN:", result.stdout)
 
     def test_invalid_answers_are_asked_again(self):
-        result = self.install(["9", "abc", "", "2", "4", "1", "1", "1"])
+        result = self.install(["9", "abc", "", "2", "4", "1", "2", "1", "1"])
         self.assertEqual(0, result.returncode, result.stdout)
         self.assertGreaterEqual(result.stdout.count("Invalid choice"), 3)
         self.assertIn("INT_EDITION=int-os", result.stdout)
         self.assertIn("LANG=en_US.UTF-8", result.stdout)
 
     def test_zero_cancels_and_end_of_input_cancels(self):
-        for answers in (["2", "0"], ["2", "4", "1", "0"], ["2"]):
+        for answers in (["2", "0"], ["2", "4", "1", "2", "0"], ["2", "4", "1", "0"], ["2"]):
             with self.subTest(answers=answers):
                 result = self.install(answers)
                 self.assertNotEqual(0, result.returncode)
@@ -84,16 +84,44 @@ class InstallerTests(unittest.TestCase):
     def test_no_target_disk_besides_live_stick(self):
         for name in ("nvme0n1",):
             shutil.rmtree(self.sys / "block" / name)
-        result = self.install(["2", "4", "1"])
+        result = self.install(["2", "4", "1", "2"])
         self.assertNotEqual(0, result.returncode)
         self.assertIn("No installation disk found", result.stdout)
 
     def test_tiny_disk_is_refused(self):
         (self.sys / "block" / "nvme0n1" / "size").write_text("4194304\n")  # 2 GiB
-        result = self.install(["2", "4", "1", "1", "1"])
+        result = self.install(["2", "4", "1", "2", "1", "1"])
         self.assertNotEqual(0, result.returncode)
         self.assertIn("disk too small", result.stdout)
         self.assertNotIn("RUN:", result.stdout)
+
+    def test_encrypted_os_int_install_uses_luks_no_swap_and_random_mac(self):
+        result = self.install(["2", "4", "2", "1", "1", "1"])
+        out = result.stdout
+        self.assertEqual(0, result.returncode, out + result.stderr)
+        self.assertIn("RUN: parted -s /dev/nvme0n1 mkpart root ext4 512MiB 100%", out)
+        self.assertIn("RUN: cryptsetup luksFormat --type luks2 --pbkdf argon2id /dev/nvme0n1p2", out)
+        self.assertIn("RUN: mkfs.ext4 -F -q -L INT-ROOT /dev/mapper/introot", out)
+        self.assertIn("RUN: mount /dev/mapper/introot /tgt_root", out)
+        self.assertIn("RUN: cryptsetup close introot", out)
+        self.assertNotIn("mkswap", out)
+        self.assertNotIn("swap  defaults", out)
+        self.assertIn("intluks=PARTUUID=DRYRUN-ROOT root=/dev/mapper/introot", out)
+        self.assertIn("initrd /initrd-luks.cpio.gz", out)
+        self.assertIn("RUN: cp /tmp/initrd-luks.cpio.gz /tgt_boot/initrd-luks.cpio.gz", out)
+        self.assertIn("INT_ENCRYPTED=1", out)
+        self.assertIn("MACAddressPolicy=random", out)
+        # The passphrase is never passed on a command line.
+        for line in out.splitlines():
+            if "cryptsetup" in line:
+                self.assertNotIn("--key-file", line)
+
+    def test_int_os_keeps_hardware_mac_and_plain_layout(self):
+        result = self.install(["2", "4", "1", "2", "1", "1"])
+        self.assertEqual(0, result.returncode, result.stdout)
+        self.assertNotIn("MACAddressPolicy", result.stdout)
+        self.assertNotIn("cryptsetup", result.stdout)
+        self.assertIn("INT_ENCRYPTED=0", result.stdout)
 
 
 if __name__ == "__main__":

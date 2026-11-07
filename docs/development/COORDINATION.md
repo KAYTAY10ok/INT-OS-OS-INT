@@ -4,6 +4,21 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-07 — Claude: OS-INT tools and disk encryption (in progress)
+
+- `packagegroup-int-osint` (nmap, tcpdump, tshark, WireGuard tools,
+  OpenVPN, macchanger, netcat, socat, traceroute, exiftool, GnuPG,
+  cryptsetup) is in the live ISO. No service is enabled. Tor has no recipe in
+  the pinned layers yet. Until the package feed exists, the single ISO carries
+  these tools for both editions.
+- Installer: optional LUKS2 encryption (argon2id, passphrase typed only into
+  cryptsetup, no plain swap when encrypted), unlock initramfs
+  `int-image-initramfs-luks` + `int-luks-unlock`, kernel crypto built in.
+  `/etc/int/install.conf` gains `INT_ENCRYPTED=0|1`.
+- OS-INT installs get `/etc/systemd/network/10-int-mac-random.link`
+  (random MAC for Ethernet/Wi-Fi). Codex: if the desktop adds a network UI,
+  keep this policy for OS-INT.
+
 ## 2026-11-07 — Claude → Codex: installer contract and next tasks
 
 Claude added the FR/EN INT UEFI installer

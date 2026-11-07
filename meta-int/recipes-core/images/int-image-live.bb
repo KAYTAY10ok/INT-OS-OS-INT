@@ -29,6 +29,8 @@ IMAGE_INSTALL:append = " \
     kbd \
     kbd-keymaps \
     util-linux-lsblk \
+    packagegroup-int-osint \
+    int-luks-initrd \
 "
 # The installer creates a disk-sized partition; the live rootfs needs little slack.
 IMAGE_ROOTFS_EXTRA_SPACE = "65536"

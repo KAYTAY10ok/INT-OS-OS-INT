@@ -1,0 +1,31 @@
+#!/bin/sh
+# INT installed system: unlock the LUKS2 root before mounting it.
+# Kernel parameter: intluks=PARTUUID=<partition uuid>  (set by the installer)
+
+luksunlock_enabled() {
+	[ -n "$bootparam_intluks" ]
+}
+
+luksunlock_run() {
+	case "$bootparam_intluks" in
+	PARTUUID=*) dev="/dev/disk/by-partuuid/${bootparam_intluks#PARTUUID=}" ;;
+	UUID=*) dev="/dev/disk/by-uuid/${bootparam_intluks#UUID=}" ;;
+	*) dev="$bootparam_intluks" ;;
+	esac
+	C=0
+	while [ ! -e "$dev" ] && [ $C -lt 30 ]; do
+		sleep 1; C=$((C + 1))
+	done
+	[ -e "$dev" ] || fatal "INT: encrypted disk $dev not found"
+	tries=0
+	while [ $tries -lt 5 ]; do
+		echo
+		echo "INT Linux - disque chiffre / encrypted disk"
+		if cryptsetup open --type luks2 "$dev" introot; then
+			bootparam_root=/dev/mapper/introot
+			return 0
+		fi
+		tries=$((tries + 1))
+	done
+	fatal "INT: could not unlock the encrypted disk"
+}

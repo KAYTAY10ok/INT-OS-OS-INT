@@ -34,6 +34,11 @@ msg() {
 		edition) echo "Edition :" ;;
 		ed_intos) echo "INT-OS  - minimaliste, leger" ;;
 		ed_osint) echo "OS-INT  - cyber/opsec, complet" ;;
+		encrypt) echo "Chiffrer le disque (LUKS2) ? Il faudra une phrase secrete a chaque demarrage." ;;
+		enc_yes) echo "Oui, chiffrer (recommande pour OS-INT ; pas de swap en clair)" ;;
+		enc_no) echo "Non" ;;
+		passinfo) echo "Choisis la phrase secrete du disque (deux fois). Elle sera demandee au demarrage avec les MEMES touches qu'ici. Si elle est perdue, les donnees sont perdues." ;;
+		passretry) echo "Phrase secrete refusee ou differente, recommence." ;;
 		disks) echo "Disques disponibles (le disque choisi sera ENTIEREMENT efface) :" ;;
 		nodisk) echo "Aucun disque d'installation trouve (en dehors de la cle live). Installation annulee." ;;
 		choose) echo "Tape le numero puis Entree (0 = annuler) :" ;;
@@ -63,6 +68,11 @@ msg() {
 		edition) echo "Edition:" ;;
 		ed_intos) echo "INT-OS  - minimal, lightweight" ;;
 		ed_osint) echo "OS-INT  - cyber/opsec, complete" ;;
+		encrypt) echo "Encrypt the disk (LUKS2)? A passphrase will be needed at every boot." ;;
+		enc_yes) echo "Yes, encrypt (recommended for OS-INT; no plain swap)" ;;
+		enc_no) echo "No" ;;
+		passinfo) echo "Choose the disk passphrase (twice). It is asked at boot with the SAME keys as here. If it is lost, the data is lost." ;;
+		passretry) echo "Passphrase rejected or different, try again." ;;
 		disks) echo "Available disks (the chosen disk will be COMPLETELY erased):" ;;
 		nodisk) echo "No installation disk found (besides the live stick). Installation aborted." ;;
 		choose) echo "Type the number, then Enter (0 = cancel):" ;;
@@ -178,6 +188,12 @@ echo "2) $(msg ed_osint)"
 ask 2
 case "$answer" in 0) msg cancel; exit 1 ;; 1) EDITION=int-os ;; 2) EDITION=os-int ;; esac
 
+msg encrypt
+echo "1) $(msg enc_yes)"
+echo "2) $(msg enc_no)"
+ask 2
+case "$answer" in 0) msg cancel; exit 1 ;; 1) ENCRYPT=1 ;; 2) ENCRYPT=0 ;; esac
+
 DISKS=$(list_disks)
 if [ -z "$DISKS" ]; then
 	msg nodisk
@@ -220,14 +236,20 @@ swap_mb=$(( ${mem_kb:-1048576} / 1024 ))
 [ "$swap_mb" -lt 512 ] && swap_mb=512
 boot_mb=512
 root_end_mb=$((disk_mb - swap_mb))
+# An unencrypted swap would leak memory contents of an encrypted system.
+[ "$ENCRYPT" = 1 ] && { swap_mb=0; root_end_mb=$disk_mb; }
 if [ "$root_end_mb" -le $((boot_mb + 4096)) ]; then
 	fail "disk too small (${disk_mb} MiB)"
 fi
 
 msg parts
 echo "  ${bootfs}  EFI     ${boot_mb} MiB"
-echo "  ${rootfs}  ext4    $((root_end_mb - boot_mb)) MiB"
-echo "  ${swap}  swap    ${swap_mb} MiB"
+if [ "$ENCRYPT" = 1 ]; then
+	echo "  ${rootfs}  LUKS2 + ext4    $((root_end_mb - boot_mb)) MiB"
+else
+	echo "  ${rootfs}  ext4    $((root_end_mb - boot_mb)) MiB"
+	echo "  ${swap}  swap    ${swap_mb} MiB"
+fi
 msg working
 
 # --- install ----------------------------------------------------------------
@@ -244,22 +266,44 @@ run dd if=/dev/zero of="$device" bs=1M count=4
 run parted -s "$device" mklabel gpt
 run parted -s "$device" mkpart ESP fat32 1MiB "${boot_mb}MiB"
 run parted -s "$device" set 1 esp on
-run parted -s "$device" mkpart root ext4 "${boot_mb}MiB" "${root_end_mb}MiB"
-run parted -s "$device" mkpart swap linux-swap "${root_end_mb}MiB" 100%
+if [ "$ENCRYPT" = 1 ]; then
+	run parted -s "$device" mkpart root ext4 "${boot_mb}MiB" 100%
+else
+	run parted -s "$device" mkpart root ext4 "${boot_mb}MiB" "${root_end_mb}MiB"
+	run parted -s "$device" mkpart swap linux-swap "${root_end_mb}MiB" 100%
+fi
 
 if [ "$DRY_RUN" != 1 ]; then
 	C=0
-	while [ $C -lt 10 ] && { [ ! -e "$bootfs" ] || [ ! -e "$rootfs" ] || [ ! -e "$swap" ]; }; do
+	while [ $C -lt 10 ] && { [ ! -e "$bootfs" ] || [ ! -e "$rootfs" ] || { [ "$ENCRYPT" != 1 ] && [ ! -e "$swap" ]; }; }; do
 		C=$((C + 1)); sleep 1
 	done
 fi
 
 run mkfs.vfat -F 32 -n INT-EFI "$bootfs"
-run mkfs.ext4 -F -q -L INT-ROOT "$rootfs"
-run mkswap -L INT-SWAP "$swap"
+rootdev=$rootfs
+if [ "$ENCRYPT" = 1 ]; then
+	msg passinfo
+	if [ "$DRY_RUN" = 1 ]; then
+		echo "RUN: cryptsetup luksFormat --type luks2 --pbkdf argon2id $rootfs"
+		echo "RUN: cryptsetup open --type luks2 $rootfs introot"
+	else
+		# cryptsetup asks for the passphrase twice on the console itself;
+		# the passphrase never appears in arguments, files or logs.
+		until cryptsetup -q luksFormat --type luks2 --pbkdf argon2id --label INT-CRYPT "$rootfs"; do
+			msg passretry
+		done
+		until cryptsetup open --type luks2 "$rootfs" introot; do
+			msg passretry
+		done
+	fi
+	rootdev=/dev/mapper/introot
+fi
+run mkfs.ext4 -F -q -L INT-ROOT "$rootdev"
+[ "$ENCRYPT" = 1 ] || run mkswap -L INT-SWAP "$swap"
 
 run mkdir -p /tgt_root /src_root /tgt_boot
-run mount "$rootfs" /tgt_root
+run mount "$rootdev" /tgt_root
 run mount -o ro,loop "$MEDIA_ROOT/$MEDIA/$ROOTFS_IMAGE" /src_root
 msg copying
 run cp -a /src_root/. /tgt_root/
@@ -269,7 +313,7 @@ if [ "$DRY_RUN" = 1 ]; then
 	boot_uuid=DRYRUN-BOOT; swap_puuid=DRYRUN-SWAP; root_puuid=DRYRUN-ROOT
 else
 	boot_uuid=$(blkid -o value -s UUID "$bootfs")
-	swap_puuid=$(blkid -o value -s PARTUUID "$swap")
+	[ "$ENCRYPT" = 1 ] || swap_puuid=$(blkid -o value -s PARTUUID "$swap")
 	root_puuid=$(blkid -o value -s PARTUUID "$rootfs")
 fi
 
@@ -282,10 +326,16 @@ write() {
 	fi
 }
 
-write /tgt_root/etc/fstab <<EOF
+if [ "$ENCRYPT" = 1 ]; then
+	write /tgt_root/etc/fstab <<EOF
+UUID=$boot_uuid  /boot  vfat  umask=0077  0  2
+EOF
+else
+	write /tgt_root/etc/fstab <<EOF
 PARTUUID=$swap_puuid  none   swap  defaults  0  0
 UUID=$boot_uuid  /boot  vfat  umask=0077  0  2
 EOF
+fi
 [ "$DRY_RUN" = 1 ] || mkdir -p /tgt_root/etc/int
 [ "$DRY_RUN" = 1 ] || : > /tgt_root/etc/int/install.conf
 write /tgt_root/etc/int/install.conf <<EOF
@@ -295,6 +345,7 @@ INT_LANGUAGE=$LANG_CODE
 INT_KEYMAP=$KEYMAP
 INT_XKB_LAYOUT=$XKB_LAYOUT
 INT_XKB_VARIANT=$XKB_VARIANT
+INT_ENCRYPTED=$ENCRYPT
 EOF
 [ "$DRY_RUN" = 1 ] || : > /tgt_root/etc/vconsole.conf
 write /tgt_root/etc/vconsole.conf <<EOF
@@ -307,7 +358,25 @@ LANG=$locale
 EOF
 [ "$DRY_RUN" = 1 ] || : > /tgt_root/etc/hostname
 echo "$EDITION" | write /tgt_root/etc/hostname
+if [ "$EDITION" = os-int ]; then
+	# OS-INT: a new random MAC address for Ethernet and Wi-Fi at each boot.
+	[ "$DRY_RUN" = 1 ] || { mkdir -p /tgt_root/etc/systemd/network; : > /tgt_root/etc/systemd/network/10-int-mac-random.link; }
+	write /tgt_root/etc/systemd/network/10-int-mac-random.link <<EOF
+[Match]
+Type=ether wlan
+
+[Link]
+MACAddressPolicy=random
+NamePolicy=kernel database onboard slot path
+EOF
+fi
+if [ "$ENCRYPT" = 1 ]; then
+	run cp /tgt_root/usr/lib/int/initrd-luks.cpio.gz /tmp/initrd-luks.cpio.gz
+fi
 run umount /tgt_root
+if [ "$ENCRYPT" = 1 ]; then
+	run cryptsetup close introot
+fi
 
 run mount "$bootfs" /tgt_boot
 run mkdir -p /tgt_boot/EFI/BOOT
@@ -316,13 +385,25 @@ for kernel in bzImage; do
 	run cp "$MEDIA_ROOT/$MEDIA/$kernel" /tgt_boot/
 done
 [ "$DRY_RUN" = 1 ] || : > /tgt_boot/EFI/BOOT/grub.cfg
-write /tgt_boot/EFI/BOOT/grub.cfg <<EOF
+if [ "$ENCRYPT" = 1 ]; then
+	run cp /tmp/initrd-luks.cpio.gz /tgt_boot/initrd-luks.cpio.gz
+	write /tgt_boot/EFI/BOOT/grub.cfg <<EOF
+default=0
+timeout=3
+menuentry 'INT Linux' {
+linux /bzImage intluks=PARTUUID=$root_puuid root=/dev/mapper/introot rw rootwait quiet loglevel=3
+initrd /initrd-luks.cpio.gz
+}
+EOF
+else
+	write /tgt_boot/EFI/BOOT/grub.cfg <<EOF
 default=0
 timeout=3
 menuentry 'INT Linux' {
 linux /bzImage root=PARTUUID=$root_puuid rw rootwait quiet loglevel=3
 }
 EOF
+fi
 run umount /tgt_boot
 
 msg bootentry
