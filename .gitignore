@@ -4,3 +4,7 @@ __pycache__/
 /build/
 /downloads/
 /sstate-cache/
+# Signing keys stay offline with the owner (docs/development/secure-boot.md).
+*.key
+*.p12
+*.pfx
