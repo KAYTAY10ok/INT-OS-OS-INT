@@ -205,3 +205,24 @@ class SessionEngineTest(unittest.TestCase):
         hypr = (ROOT / "meta-int-desktop/recipes-desktop/int-desktop-config/files/hyprland.conf").read_text()
         self.assertIn("source = ~/.config/int/theme/hyprland.conf", hypr)
         self.assertIn("bind = $mod, I, exec, int-dashboard show", hypr)
+
+
+class StatusBarTest(unittest.TestCase):
+    def test_status_bar_speaks_i3bar_json_with_theme_colours(self):
+        script = ROOT / "meta-int-desktop/recipes-desktop/int-desktop-config/files/int-status"
+        proc = subprocess.Popen([sys.executable, str(script)], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent",
+                                                "INT_THEME_SHARE": str(FILES.parent / "files")})
+        header = proc.stdout.readline()
+        opening = proc.stdout.readline()
+        line = proc.stdout.readline()
+        proc.kill()
+        proc.wait(timeout=5)
+        import json
+        self.assertEqual(json.loads(header), {"version": 1})
+        self.assertEqual(opening.strip(), "[")
+        blocks = json.loads(line.lstrip(","))
+        names = [b["name"] for b in blocks]
+        for name in ("cpu", "mem", "disk", "net", "int", "time"):
+            self.assertIn(name, names)
+        self.assertTrue(all(b["color"].startswith("#") for b in blocks))

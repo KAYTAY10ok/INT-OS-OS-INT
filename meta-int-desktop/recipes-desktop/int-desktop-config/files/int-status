@@ -1,24 +1,121 @@
-#!/bin/sh
-# Swaybar owns the pipe and this process. No detached polling daemon.
-# Thirty-second clock updates; no speculative CPU/RAM sampling or external I/O.
-set -eu
-export LC_ALL=C
-sleep_pid=
-cleanup() {
-    status=$?
-    trap - 0 1 2 13 15
-    if [ -n "$sleep_pid" ]; then
-        kill "$sleep_pid" 2>/dev/null || true
-        wait "$sleep_pid" 2>/dev/null || true
-    fi
-    exit "$status"
-}
-trap cleanup 0
-trap 'exit 0' 1 2 13 15
-while :; do
-    date '+INT  |  %a %d %b  %H:%M'
-    sleep 30 &
-    sleep_pid=$!
-    wait "$sleep_pid"
-    sleep_pid=
-done
+#!/usr/bin/env python3
+"""INT status bar for swaybar (i3bar JSON protocol): coloured system segments.
+
+Read-only: /proc, /sys and filesystem statistics; refreshes every 2 seconds.
+Colours follow the active int-theme preset.
+"""
+import json
+import os
+import sys
+import time
+
+SHARE = os.environ.get("INT_THEME_SHARE", "/usr/share/int")
+
+
+def read(path, default=""):
+    try:
+        with open(path, encoding="utf-8") as stream:
+            return stream.read()
+    except OSError:
+        return default
+
+
+def theme_colours():
+    home = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    name = read(os.path.join(home, "int", "theme", "current"), "dark").strip() or "dark"
+    if not name.replace("-", "").isalnum():
+        name = "dark"
+    values = {}
+    for line in read(os.path.join(SHARE, "themes", name + ".theme")).splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            values[key.strip()] = value.strip()
+    return {"accent": values.get("accent", "#62d6e8"), "accent2": values.get("accent2", "#7aa2ed"),
+            "fg": values.get("fg", "#e2edf7"), "dim": values.get("fg_dim", "#91a6bc"),
+            "urgent": values.get("urgent", "#f07178"), "bg": values.get("bg_alt", "#15243a")}
+
+
+def cpu():
+    fields = [int(v) for v in read("/proc/stat").splitlines()[0].split()[1:]]
+    return sum(fields), fields[3] + (fields[4] if len(fields) > 4 else 0)
+
+
+def human(n):
+    for unit in ("B", "K", "M", "G", "T"):
+        if n < 1024:
+            return "%.0f%s" % (n, unit) if unit in ("B", "K") else "%.1f%s" % (n, unit)
+        n /= 1024
+    return "%.1fP" % n
+
+
+def net():
+    rx = tx = 0
+    for line in read("/proc/net/dev").splitlines()[2:]:
+        name, _, data = line.partition(":")
+        if name.strip() != "lo" and data.split():
+            parts = data.split()
+            rx, tx = rx + int(parts[0]), tx + int(parts[8])
+    return rx, tx
+
+
+def battery():
+    base = "/sys/class/power_supply"
+    try:
+        names = sorted(n for n in os.listdir(base) if n.startswith("BAT"))
+    except OSError:
+        return None
+    for name in names:
+        level = read(os.path.join(base, name, "capacity")).strip()
+        if level.isdigit():
+            status = read(os.path.join(base, name, "status")).strip()
+            return int(level), status == "Charging"
+    return None
+
+
+def block(name, text, colour, c):
+    return {"name": name, "full_text": " %s " % text, "color": colour, "background": c["bg"],
+            "separator": False, "separator_block_width": 6, "border": colour,
+            "border_top": 0, "border_bottom": 2, "border_left": 0, "border_right": 0}
+
+
+def main():
+    out = sys.stdout
+    out.write(json.dumps({"version": 1}) + "\n[\n")
+    out.flush()
+    prev_cpu, prev_net, prev_t = cpu(), net(), time.monotonic()
+    first = True
+    while True:
+        time.sleep(2)
+        c = theme_colours()
+        total, idle = cpu()
+        busy = 100 * (1 - (idle - prev_cpu[1]) / max(1, total - prev_cpu[0]))
+        rx, tx = net()
+        now = time.monotonic()
+        dt = max(0.1, now - prev_t)
+        mem = {k: int(v.split()[0]) for k, _, v in (l.partition(":") for l in read("/proc/meminfo").splitlines()) if v.split()}
+        used_mem = (mem.get("MemTotal", 0) - mem.get("MemAvailable", 0)) * 1024
+        st = os.statvfs("/")
+        disk = 100 * (1 - st.f_bavail / max(1, st.f_blocks))
+        blocks = [
+            block("cpu", "CPU %2.0f%%" % busy, c["urgent"] if busy > 85 else c["accent"], c),
+            block("mem", "RAM %s" % human(used_mem), c["accent2"], c),
+            block("disk", "DISK %2.0f%%" % disk, c["urgent"] if disk > 90 else c["accent"], c),
+            block("net", "↓%s ↑%s" % (human((rx - prev_net[0]) / dt), human((tx - prev_net[1]) / dt)), c["accent2"], c),
+        ]
+        bat = battery()
+        if bat:
+            blocks.append(block("bat", "BAT %d%%%s" % (bat[0], "+" if bat[1] else ""),
+                                c["urgent"] if bat[0] < 15 and not bat[1] else c["accent"], c))
+        blocks.append(block("int", "INT", c["accent"], c))
+        blocks.append(block("time", time.strftime("%a %d %b  %H:%M"), c["fg"], c))
+        out.write(("" if first else ",") + json.dumps(blocks) + "\n")
+        out.flush()
+        first = False
+        prev_cpu, prev_net, prev_t = (total, idle), (rx, tx), now
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (BrokenPipeError, KeyboardInterrupt):
+        os._exit(0)
