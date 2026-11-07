@@ -69,6 +69,21 @@ class FeedProtocolTests(unittest.TestCase):
         self.assertFalse(check(negative, {**self.process, 'returncode': 1}))
         self.assertFalse(feed.analyze_log('\n'.join(negative), self.process, 'success')['passed'])
 
+    def test_altered_metadata_protocol_requires_control_and_precise_rejection(self):
+        negative = list(feed.CASE_MARKERS['altered-repomd']) + ['[ 123.4] reboot: Power down']
+        def check(lines, process=None):
+            return feed.analyze_log('\r\n'.join(lines) + '\r\n', process or self.process,
+                                    'altered-repomd')['passed']
+        self.assertTrue(check(negative))
+        for index in range(len(negative)):
+            with self.subTest(missing=negative[index]):
+                self.assertFalse(check(negative[:index] + negative[index + 1:]))
+        self.assertFalse(check(negative + [negative[3]]))
+        self.assertFalse(check([negative[1], negative[0], *negative[2:]]))
+        self.assertFalse(check(negative + ['INT_FEED_CASE:missing-metadata-signature:PASS']))
+        self.assertFalse(check(negative, {**self.process, 'returncode': 1}))
+        self.assertFalse(feed.analyze_log('\n'.join(negative), self.process, 'success')['passed'])
+
     def test_missing_duplicate_reordered_unknown_failures_and_panics_reject(self):
         cases = [self.lines[1:], self.lines + [self.lines[0]],
                  [self.lines[1], self.lines[0], *self.lines[2:]],
@@ -99,6 +114,8 @@ class FeedProtocolTests(unittest.TestCase):
         self.assertIn('int_feed_case=wrong-key-rpm', wrong_key[wrong_key.index('-append') + 1])
         missing = feed.build_qemu_command('qemu', artifacts, 'A' * 40, 'missing-metadata-signature')
         self.assertIn('int_feed_case=missing-metadata-signature', missing[missing.index('-append') + 1])
+        altered = feed.build_qemu_command('qemu', artifacts, 'A' * 40, 'altered-repomd')
+        self.assertIn('int_feed_case=altered-repomd', altered[altered.index('-append') + 1])
         with self.assertRaises(ValueError):
             feed.build_qemu_command('qemu', artifacts, 'A' * 40, 'unsigned-rpm kernel_init=foo')
         with self.assertRaises(ValueError):

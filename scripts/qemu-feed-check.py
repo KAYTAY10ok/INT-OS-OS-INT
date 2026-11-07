@@ -72,6 +72,16 @@ CASE_MARKERS = {
         "INT_FEED_CASE:missing-metadata-signature:PASS",
         "INT_FEED_SHUTDOWN",
     ),
+    "altered-repomd": (
+        "INT_FEED_CHECK:pin:PASS",
+        "INT_FEED_CHECK:install-v1:PASS",
+        "INT_FEED_CHECK:signed-metadata-control:PASS",
+        "INT_FEED_CHECK:altered-repomd-fixture:PASS",
+        "INT_FEED_CHECK:altered-repomd-rejected:PASS",
+        "INT_FEED_CHECK:unchanged-v1:PASS",
+        "INT_FEED_CASE:altered-repomd:PASS",
+        "INT_FEED_SHUTDOWN",
+    ),
 }
 REQUIRED_PACKAGES = frozenset({"int-feed-smoke", "dnf", "rpm", "gnupg", "gnupg-gpg"})
 

@@ -38,6 +38,9 @@ class GuestInputTests(unittest.TestCase):
         self.assertEqual(self.run_helper('int-feed-args', command).stdout, FINGERPRINT + '\n')
         self.assertEqual(self.run_helper('int-feed-args', command, '--case').stdout,
                          'missing-metadata-signature\n')
+        command = f'console=ttyS0 int_feed_case=altered-repomd int_feed_fingerprint={FINGERPRINT}'
+        self.assertEqual(self.run_helper('int-feed-args', command).stdout, FINGERPRINT + '\n')
+        self.assertEqual(self.run_helper('int-feed-args', command, '--case').stdout, 'altered-repomd\n')
         for cmdline in (f'int_feed_case=success int_feed_fingerprint={FINGERPRINT.lower()}',
                         f'int_feed_case=fail int_feed_fingerprint={FINGERPRINT}',
                         f'int_feed_case= int_feed_case=success int_feed_fingerprint={FINGERPRINT}',
