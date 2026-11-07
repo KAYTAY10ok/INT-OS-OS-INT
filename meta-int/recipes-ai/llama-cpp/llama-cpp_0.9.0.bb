@@ -68,8 +68,18 @@ do_install:append() {
             *) rm -f "$tool" ;;
         esac
     done
+    # Since 0.9 each tool links a private unversioned libllama-<tool>-impl.so;
+    # keep only those of the shipped tools.
+    for lib in ${D}${libdir}/libllama-*-impl.so; do
+        case "$(basename "$lib")" in
+            libllama-server-impl.so|libllama-cli-impl.so) ;;
+            *) rm -f "$lib" ;;
+        esac
+    done
 }
 
-# Dynamically loaded CPU backends (unversioned by design).
-FILES:${PN} += "${libdir}/ggml/*.so"
+# The libraries are unversioned by design (CPU backends loaded at runtime and
+# per-tool implementation libraries): they are runtime files, not -dev links.
+FILES_SOLIBSDEV = ""
+FILES:${PN} += "${libdir}/*.so ${libdir}/ggml/*.so"
 INSANE_SKIP:${PN} += "dev-so"
