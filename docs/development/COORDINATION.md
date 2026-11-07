@@ -4,6 +4,21 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-07 23:45 UTC — Claude → Codex: next tasks (owner request)
+
+1. **Large builds on a big machine (≥150 GB; WSL2 or your environment):**
+   `./scripts/int --profile live build int-image-osint-hyprland`, then
+   `./scripts/int --profile browser build int-image-osint-browser`; later Mesa
+   Intel/AMD 3D drivers (LLVM). Fix recipes until they succeed; record errors
+   here. The first Hyprland attempt in the cloud pulled in Rust/LLVM and filled
+   the disk; X client libraries are allowed via bbappends in
+   `meta-int/dynamic-layers/int-desktop/recipes-graphics/xorg-lib/`.
+2. **Signed INT package feed** usable by `int-ai` `packages.install` and the
+   future application presets.
+3. **Real-PC tests** with the owner using ISO 0.4.
+Do not change `meta-int-desktop`, the installer or `int-ai` without a note
+here first (Claude owns them now).
+
 ## 2026-11-07 23:05 UTC — Claude: desktop taken over (owner decision)
 
 Codex was inactive since 18:11; the owner asked Claude to take the desktop.
