@@ -1,0 +1,138 @@
+#!/bin/sh
+# int-privacy: OS-INT privacy helper.
+#
+# Arguments are only ever passed to commands as separate words ("$@"/"$f");
+# nothing typed by the user is evaluated by a shell.
+set -u
+
+PROG=int-privacy
+MAC_POLICY=/etc/systemd/network/10-int-mac-random.link
+TOR_UNIT=tor.service
+FIREWALL_UNIT=nftables.service
+
+usage() {
+    cat <<EOF
+Usage: $PROG COMMAND [ARGS]
+
+Commands:
+  status                    MAC randomisation policy, Tor and firewall state
+  tor on|off                enable and start, or stop and disable, Tor (root)
+  clean-metadata FILE...    remove metadata with exiftool (regular files only;
+                            files are rewritten in place, no backup is kept)
+  help                      show this help
+EOF
+}
+
+err() {
+    printf '%s: %s\n' "$PROG" "$*" >&2
+}
+
+unit_state() {
+    # $1: unit name. Prints "<enabled-state>, <active-state>".
+    if ! command -v systemctl >/dev/null 2>&1; then
+        echo "unknown (systemctl not found)"
+        return
+    fi
+    enabled=$(systemctl is-enabled "$1" 2>/dev/null)
+    case "$enabled" in
+        ""|not-found) echo "not installed"; return ;;
+    esac
+    active=$(systemctl is-active "$1" 2>/dev/null)
+    echo "${enabled}, ${active:-unknown}"
+}
+
+cmd_status() {
+    if [ "$#" -ne 0 ]; then
+        err "status takes no arguments"
+        return 2
+    fi
+    if [ -f "$MAC_POLICY" ]; then
+        echo "MAC randomisation: policy present ($MAC_POLICY)"
+    else
+        echo "MAC randomisation: no policy ($MAC_POLICY missing)"
+    fi
+    echo "Tor service: $(unit_state "$TOR_UNIT")"
+    echo "Firewall (nftables): $(unit_state "$FIREWALL_UNIT")"
+}
+
+cmd_tor() {
+    if [ "$#" -ne 1 ]; then
+        err "usage: $PROG tor on|off"
+        return 2
+    fi
+    case "$1" in
+        on) action=enable ;;
+        off) action=disable ;;
+        *) err "usage: $PROG tor on|off"; return 2 ;;
+    esac
+    if [ "$(id -u)" != 0 ]; then
+        err "'tor $1' changes a system service and needs root: sudo $PROG tor $1"
+        return 1
+    fi
+    if ! systemctl "$action" --now "$TOR_UNIT"; then
+        err "systemctl $action --now $TOR_UNIT failed"
+        return 1
+    fi
+    if [ "$1" = on ]; then
+        echo "Tor is enabled and running: SOCKS proxy on 127.0.0.1:9050 only."
+    else
+        echo "Tor is stopped and disabled."
+    fi
+}
+
+cmd_clean_metadata() {
+    if [ "$#" -eq 0 ]; then
+        err "usage: $PROG clean-metadata FILE..."
+        return 2
+    fi
+    # Check every argument before touching any file.
+    bad=0
+    for f in "$@"; do
+        if [ -L "$f" ]; then
+            err "refusing symbolic link: $f"
+            bad=1
+        elif [ -d "$f" ]; then
+            err "refusing directory: $f"
+            bad=1
+        elif [ ! -e "$f" ]; then
+            err "no such file: $f"
+            bad=1
+        elif [ ! -f "$f" ]; then
+            err "refusing non-regular file: $f"
+            bad=1
+        fi
+    done
+    if [ "$bad" -ne 0 ]; then
+        err "nothing was changed"
+        return 2
+    fi
+    if ! command -v exiftool >/dev/null 2>&1; then
+        err "exiftool is not installed"
+        return 1
+    fi
+    # Rebuild the argument list so a name starting with "-" can never be
+    # read as an exiftool option.
+    for f in "$@"; do
+        shift
+        case "$f" in
+            -*) set -- "$@" "./$f" ;;
+            *) set -- "$@" "$f" ;;
+        esac
+    done
+    exiftool -all= -overwrite_original "$@"
+}
+
+if [ "$#" -eq 0 ]; then
+    usage >&2
+    exit 2
+fi
+
+command=$1
+shift
+case "$command" in
+    status) cmd_status "$@" ;;
+    tor) cmd_tor "$@" ;;
+    clean-metadata) cmd_clean_metadata "$@" ;;
+    help|-h|--help) usage ;;
+    *) err "unknown command: $command"; usage >&2; exit 2 ;;
+esac

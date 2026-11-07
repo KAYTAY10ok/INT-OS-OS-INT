@@ -1,0 +1,51 @@
+[Unit]
+Description=Tor client (INT OS-INT, SOCKS on 127.0.0.1:9050 only)
+Documentation=man:tor(1) https://www.torproject.org/
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=tor
+Group=tor
+ExecStartPre=@BINDIR@/tor -f @SYSCONFDIR@/tor/torrc --verify-config
+ExecStart=@BINDIR@/tor -f @SYSCONFDIR@/tor/torrc
+ExecReload=@BASE_BINDIR@/kill -HUP $MAINPID
+KillSignal=SIGINT
+TimeoutSec=60
+Restart=on-failure
+LimitNOFILE=8192
+
+StateDirectory=tor
+StateDirectoryMode=0700
+RuntimeDirectory=tor
+RuntimeDirectoryMode=0750
+UMask=0077
+
+# The daemon never needs privileges: it starts as the tor user and binds
+# only an unprivileged loopback port.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+# Needed only so "systemctl enable tor" (int-privacy tor on) works. The
+# recipe sets SYSTEMD_AUTO_ENABLE = "disable": no image enables it.
+[Install]
+WantedBy=multi-user.target

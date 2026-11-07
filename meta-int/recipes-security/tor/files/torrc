@@ -1,0 +1,30 @@
+## /etc/tor/torrc -- INT OS-INT hardened Tor client configuration.
+##
+## This Tor is a client only. INT builds it without the relay module, so it
+## cannot act as a relay, bridge, exit node or directory cache: do not add
+## ORPort, DirPort, DirCache or BridgeRelay lines (Tor would refuse to start).
+## The service is disabled by default; "sudo int-privacy tor on" starts it.
+
+ClientOnly 1
+ExitRelay 0
+
+## Applications on this machine only. Point them at socks5h://127.0.0.1:9050
+## so DNS is also resolved through Tor.
+SocksPort 127.0.0.1:9050
+SocksPolicy accept 127.0.0.1/32
+SocksPolicy reject *
+
+## No control port. If a controller (e.g. nyx) is really needed, use only
+## localhost and cookie authentication, never a password or a public address:
+#ControlPort 127.0.0.1:9051
+#CookieAuthentication 1
+#CookieAuthFile /run/tor/control.authcookie
+
+## Created by systemd (StateDirectory=tor), owned by the tor user, mode 0700.
+DataDirectory /var/lib/tor
+AvoidDiskWrites 1
+
+## Logs go to the journal; addresses are scrubbed.
+Log notice stdout
+SafeLogging 1
+RunAsDaemon 0
