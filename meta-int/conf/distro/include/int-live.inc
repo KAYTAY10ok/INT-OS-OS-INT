@@ -16,3 +16,15 @@ PR:pn-linux-yocto = "r3"
 INITRAMFS_SCRIPTS = "initramfs-framework-base initramfs-module-setup-live initramfs-module-udev initramfs-module-install int-installer int-live-overlay"
 # Installer language and keyboard choices need these locales on the target.
 GLIBC_GENERATE_LOCALES:pn-glibc-locale = "en_US.UTF-8 fr_FR.UTF-8 fr_CH.UTF-8 de_CH.UTF-8"
+# Hyprland links libXcursor (cursor themes). INT has no X11 display server:
+# allow only this small library chain, not the x11 distro feature.
+REQUIRED_DISTRO_FEATURES:pn-libxcursor = ""
+REQUIRED_DISTRO_FEATURES:pn-libxrender = ""
+REQUIRED_DISTRO_FEATURES:pn-libxfixes = ""
+REQUIRED_DISTRO_FEATURES:pn-libx11 = ""
+REQUIRED_DISTRO_FEATURES:pn-libxcb = ""
+REQUIRED_DISTRO_FEATURES:pn-libxau = ""
+REQUIRED_DISTRO_FEATURES:pn-libxdmcp = ""
+REQUIRED_DISTRO_FEATURES:pn-xtrans = ""
+# Hyprland image loading: PNG/JPEG/WebP only (no HEIF/JPEG XL/librsvg builds).
+PACKAGECONFIG:pn-hyprgraphics = ""
