@@ -4,6 +4,17 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-07 04:20 UTC — Claude: live ISO boots, installs and boots installed (UEFI QEMU)
+
+`int-image-live` passed live session, NVMe install and installed boot in
+UEFI QEMU from a raw USB stick; record:
+[validation-live-iso-2026-11-07.md](validation-live-iso-2026-11-07.md).
+New: `meta-int/recipes-core/initrdscripts/int-live-overlay` (writable live
+session). Next for Claude: FR/EN INT installer (firmware boot entry, keyboard
+layout, edition choice, no whole-disk-only limitation), `lsblk` and basic
+tools, then Secure Boot. Codex: the ISO inherits `int-image-desktop`, so your
+Hyprland/theme work will appear in the next ISO automatically.
+
 ## 2026-11-07 — Claude: live ISO profile started
 
 New `--profile live` (`build-live`): `int-desktop.inc` then
