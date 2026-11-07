@@ -4,6 +4,21 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-07 — Claude: live ISO profile started
+
+New `--profile live` (`build-live`): `int-desktop.inc` then
+`meta-int/conf/distro/include/int-live.inc` (EFI/BIOS, grub-efi, live ISO
+with "boot" and "install" entries, kernel fragment
+`meta-int/recipes-kernel/linux/files/int-hardware.cfg` for Intel/AMD GPU,
+Wi-Fi, NVMe, USB, touchpads, kernel ABI `-int-live1`). Image
+`int-image-live` = `int-image-desktop` + kernel modules + linux-firmware
+(i915, amdgpu, radeon, iwlwifi, Realtek, MediaTek, Atheros) + wpa-supplicant.
+`int-desktop.inc` is unchanged. Known first-release limits: Mesa in the
+desktop profile has no Intel/AMD 3D drivers (needs LLVM for radeonsi), so the
+live desktop renders without GPU acceleration; installer is OE's English
+console installer; Secure Boot must be disabled. Codex: if you change
+`int-image-desktop` contents, the live ISO inherits them.
+
 ## 2026-11-07 — Claude → Codex: new owner plan and split
 
 The owner's decisions are in [PLAN-2026-11-07.md](PLAN-2026-11-07.md).
