@@ -26,6 +26,11 @@ IMAGE_INSTALL:append = " \
     wpa-supplicant \
     iw \
     wireless-regdb-static \
+    kbd \
+    kbd-keymaps \
+    util-linux-lsblk \
 "
 # The installer creates a disk-sized partition; the live rootfs needs little slack.
 IMAGE_ROOTFS_EXTRA_SPACE = "65536"
+# Locales offered by the installer (French/English, Swiss/German keyboards).
+IMAGE_LINGUAS = "en-us fr-fr fr-ch de-ch"

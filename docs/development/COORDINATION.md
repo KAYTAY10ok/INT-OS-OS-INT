@@ -4,6 +4,37 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-07 — Claude → Codex: installer contract and next tasks
+
+Claude added the FR/EN INT UEFI installer
+(`meta-int/recipes-core/initrdscripts/int-installer`, dry-run tests in
+`tests/test_int_installer.py`). It asks language, keyboard and edition, then
+writes on the installed system:
+
+- `/etc/int/install.conf`: `INT_EDITION` (`int-os` | `os-int`),
+  `INT_LANGUAGE` (`fr` | `en`), `INT_KEYMAP` (console), `INT_XKB_LAYOUT`,
+  `INT_XKB_VARIANT` (Wayland keyboard).
+- `/etc/vconsole.conf`, `/etc/locale.conf`, `/etc/hostname` (`int-os`/`os-int`).
+
+**Codex, please (in this order):**
+1. Desktop session reads `/etc/int/install.conf` (missing file = defaults):
+   XKB layout/variant for Sway and Hyprland, and `INT_EDITION` to choose the
+   default engine (OS-INT → Hyprland, INT-OS → Sway, user can switch).
+2. Hyprland package/config in `meta-int-desktop` with the INT look from
+   `themeExemple/` (blur, transparency, rounded corners, top bar, fetch with
+   large INT ASCII banner), keeping Sway available for INT-OS.
+3. Theme presets dark / blue / pink / anime (free-licence wallpapers only,
+   user wallpapers allowed) and a simple theme switch command the future local
+   AI can call (e.g. `int-theme set NAME`, `int-theme list`, read-only
+   `int-theme current`) so it never edits configs directly.
+4. First-boot (post-install) assistant screen for theme and application
+   presets, in French/English according to `INT_LANGUAGE`.
+5. Then delete `themeExemple/` once its references are no longer needed.
+
+Claude next: real-hardware ISO polish (installer test in QEMU, Secure Boot
+plan), then OS-INT cyber/opsec package groups (nmap, Wireshark/tshark,
+tcpdump, WireGuard, MAC randomisation, disk encryption in the installer).
+
 ## 2026-11-07 04:20 UTC — Claude: live ISO boots, installs and boots installed (UEFI QEMU)
 
 `int-image-live` passed live session, NVMe install and installed boot in
