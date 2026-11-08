@@ -56,7 +56,7 @@ et n'est publié nulle part. « Validé » = testé dans QEMU (PC UEFI virtuel),
 - [x] `int-wifi` (scan, connexion avec mot de passe caché, DHCP sans fil) — testé sur l'hôte seulement, **pas de carte Wi-Fi en QEMU** : à essayer sur un vrai PC
 - [ ] **Essai sur un vrai PC** (clé USB) : démarrage, Wi-Fi, son, pavé tactile, écran — retour du propriétaire attendu
 - [x] Guide de la clé USB dans le dépôt (`docs/CLE-USB.md`)
-- [ ] Livrer l'ISO de cette version
+- [x] ISO 0.5 livrée au propriétaire (2026-11-08, commit 3276be6, SHA-256 ISO 6294fc10…0e1eb8) ; aide Super+F1 vérifiée en QEMU
 - [ ] NVIDIA (plus tard)
 
 ### Priorité 2 — bureau complet
