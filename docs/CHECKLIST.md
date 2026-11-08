@@ -54,7 +54,8 @@ et n'est publié nulle part. « Validé » = testé dans QEMU (PC UEFI virtuel),
 
 ### Priorité 1 — vrai matériel
 - [ ] **Essai sur un vrai PC** (clé USB) : démarrage, Wi-Fi, son, pavé tactile, écran — retour du propriétaire attendu
-- [ ] Mettre le guide de la clé USB dans le dépôt et livrer l'ISO de cette version
+- [x] Guide de la clé USB dans le dépôt (`docs/CLE-USB.md`)
+- [ ] Livrer l'ISO de cette version
 - [ ] NVIDIA (plus tard)
 
 ### Priorité 2 — bureau complet
@@ -64,13 +65,14 @@ et n'est publié nulle part. « Validé » = testé dans QEMU (PC UEFI virtuel),
 - [ ] Fonds d'écran anime sous licence libre (CC0/CC-BY, source notée) ou fournis par le propriétaire
 - [ ] Supprimer `themeExemple/` quand le propriétaire valide les thèmes
 - [ ] Audio (PipeWire) et accélération 3D ; aujourd'hui affichage logiciel seulement
-- [ ] Bureau lancé automatiquement après connexion (aujourd'hui : `start-int-desktop`)
+- [x] Bureau lancé automatiquement après connexion sur la 1re console d'un système installé (`int-session autostart off|on`) — à valider en QEMU
+- [x] Choix Sway/Hyprland au 1er démarrage du bureau quand Hyprland est installé
 
 ### Priorité 3 — paquets et sécurité
 - [ ] Dépôt de paquets INT signé (Codex) : il débloque les groupes navigateur/audio/multimédia et les mises à jour
 - [ ] Mode d'installation du fichier dépôt et de sa clé sur un système installé (à décider avec Codex)
 - [ ] Secure Boot MOK : choisir la source du shim, valider sur un vrai PC
-- [ ] torsocks et autres outils opsec non encore empaquetés
+- [ ] torsocks : la source officielle (gitlab.torproject.org) est bloquée par le réseau de la session cloud ; à faire sur une autre machine
 - [ ] Installation à côté de Windows (double démarrage) : non prévu pour l'instant
 
 ## Limites connues
