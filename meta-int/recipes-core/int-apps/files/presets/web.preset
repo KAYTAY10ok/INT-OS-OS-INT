@@ -1,8 +1,8 @@
 # Built by the browser profile (meta-browser); not on the ISO yet.
 title_fr=Navigateur web
 title_en=Web browser
-summary_fr=Firefox ESR durci (dépôt INT requis)
-summary_en=hardened Firefox ESR (needs the INT feed)
+summary_fr=Firefox ESR durci
+summary_en=hardened Firefox ESR
 source=feed
 default=
 packages=firefox int-firefox-policies
