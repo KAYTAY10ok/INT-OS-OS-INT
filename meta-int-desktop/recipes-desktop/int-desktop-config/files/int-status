@@ -6,6 +6,8 @@ Colours follow the active int-theme preset.
 """
 import json
 import os
+import shutil
+import subprocess
 import sys
 import time
 
@@ -72,6 +74,24 @@ def battery():
     return None
 
 
+def volume():
+    """(percent, muted) of the default PipeWire sink, or None without sound."""
+    if not shutil.which("wpctl"):
+        return None
+    try:
+        out = subprocess.run(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], capture_output=True,
+                             text=True, timeout=1, check=False).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    parts = out.split()
+    if len(parts) < 2 or parts[0] != "Volume:":
+        return None
+    try:
+        return round(float(parts[1]) * 100), "[MUTED]" in out
+    except ValueError:
+        return None
+
+
 def block(name, text, colour, c):
     return {"name": name, "full_text": " %s " % text, "color": colour, "background": c["bg"],
             "separator": False, "separator_block_width": 6, "border": colour,
@@ -102,6 +122,10 @@ def main():
             block("disk", "DISK %2.0f%%" % disk, c["urgent"] if disk > 90 else c["accent"], c),
             block("net", "↓%s ↑%s" % (human((rx - prev_net[0]) / dt), human((tx - prev_net[1]) / dt)), c["accent2"], c),
         ]
+        vol = volume()
+        if vol:
+            blocks.append(block("vol", "VOL mute" if vol[1] else "VOL %d%%" % vol[0],
+                                c["dim"] if vol[1] else c["accent2"], c))
         bat = battery()
         if bat:
             blocks.append(block("bat", "BAT %d%%%s" % (bat[0], "+" if bat[1] else ""),

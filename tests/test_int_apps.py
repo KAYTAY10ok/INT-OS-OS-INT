@@ -253,3 +253,26 @@ class AutostartTest(unittest.TestCase):
         result = subprocess.run(["/bin/sh", "-c", ". %s; echo alive" % self.PROFILE], capture_output=True, text=True,
                                 env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent"})
         self.assertEqual(result.stdout.strip(), "alive")
+
+
+class VolumeTest(unittest.TestCase):
+    def test_status_bar_shows_volume_from_wpctl(self):
+        script = ROOT / "meta-int-desktop/recipes-desktop/int-desktop-config/files/int-status"
+        status = load(script, "int_status_volume")
+        fake = mock.Mock(stdout="Volume: 0.40 [MUTED]\n")
+        with mock.patch.object(status.shutil, "which", return_value="/usr/bin/wpctl"), \
+                mock.patch.object(status.subprocess, "run", return_value=fake) as run:
+            self.assertEqual(status.volume(), (40, True))
+        self.assertEqual(run.call_args.args[0], ["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"])
+        with mock.patch.object(status.shutil, "which", return_value=None):
+            self.assertIsNone(status.volume())
+
+    def test_volume_keys_are_bound_in_both_sessions(self):
+        files = ROOT / "meta-int-desktop/recipes-desktop/int-desktop-config/files"
+        for name in ("sway-config", "hyprland.conf"):
+            text = (files / name).read_text()
+            for key in ("XF86AudioRaiseVolume", "XF86AudioLowerVolume", "XF86AudioMute"):
+                self.assertIn(key, text)
+        tools = files / "int-desktop-tools"
+        result = subprocess.run(["/bin/sh", str(tools), "volume", "up"], capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0)  # no wpctl on the host: does nothing

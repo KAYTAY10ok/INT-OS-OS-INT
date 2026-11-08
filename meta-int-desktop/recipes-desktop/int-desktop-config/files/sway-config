@@ -86,6 +86,10 @@ bindsym $mod+Print exec /usr/libexec/int-desktop-tools screenshot area
 bindsym $mod+Escape exec /usr/libexec/int-desktop-tools lock
 bindsym XF86MonBrightnessUp exec /usr/libexec/int-desktop-tools brightness up
 bindsym XF86MonBrightnessDown exec /usr/libexec/int-desktop-tools brightness down
+bindsym XF86AudioRaiseVolume exec /usr/libexec/int-desktop-tools volume up
+bindsym XF86AudioLowerVolume exec /usr/libexec/int-desktop-tools volume down
+bindsym XF86AudioMute exec /usr/libexec/int-desktop-tools volume mute
+bindsym XF86AudioMicMute exec /usr/libexec/int-desktop-tools volume mic-mute
 
 # Theme switch shortcut: Super+t opens the preset list in a terminal.
 bindsym $mod+t exec foot --app-id=int-terminal sh -c 'int-theme list; printf "\n> "; read n; int-theme set "$n"; sleep 2'

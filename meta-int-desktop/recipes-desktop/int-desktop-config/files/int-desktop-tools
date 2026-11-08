@@ -5,6 +5,7 @@
 #   int-desktop-tools lock                lock the screen
 #   int-desktop-tools startup             notifications and idle lock
 #   int-desktop-tools brightness up|down
+#   int-desktop-tools volume up|down|mute|mic-mute
 set -u
 PATH=/usr/bin:/bin
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -42,8 +43,18 @@ brightness)
     *) exit 2 ;;
     esac
     ;;
+volume)
+    have wpctl || exit 0
+    case "${2:-}" in
+    up) exec wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+ ;;
+    down) exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
+    mute) exec wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+    mic-mute) exec wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle ;;
+    *) exit 2 ;;
+    esac
+    ;;
 *)
-    sed -n '2,8s/^# \{0,1\}//p' "$0" >&2
+    sed -n '2,9s/^# \{0,1\}//p' "$0" >&2
     exit 2
     ;;
 esac
