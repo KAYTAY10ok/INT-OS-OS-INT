@@ -58,8 +58,9 @@ désactive **Secure Boot** (pas encore pris en charge), puis démarre sur la cl�
 | Opsec / vie privée | Tor, macchanger, WireGuard, OpenVPN, exiftool, GnuPG | OS-INT |
 | Outils terminal | htop, btop, nano, tmux, zsh, rsync, unzip | OS-INT |
 | Outils du bureau | captures d'écran, presse-papiers, notifications, verrouillage, luminosité | les deux |
+| Audio | son PipeWire + WirePlumber (le retirer coupe le son) | les deux |
 | Développement | git, make, strace, gdb | — |
-| Navigateur, audio, multimédia | Firefox, PipeWire, mpv | dépôt INT requis (pas encore disponible) |
+| Navigateur, multimédia | Firefox, mpv | dépôt INT requis (pas encore disponible) |
 
 Les groupes non choisis sont retirés du disque après confirmation (ton mot
 de passe est demandé). Le chiffrement et le système de base ne sont jamais

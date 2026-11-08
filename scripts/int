@@ -134,6 +134,10 @@ include int-local.conf
             "include int-local.conf", "require conf/distro/include/int-desktop.inc\ninclude int-local.conf")
         if profile in ("live", "browser"):
             # Real-hardware UEFI live/installer ISO on top of the shared desktop.
+            # meta-multimedia provides PipeWire/WirePlumber (sound on real PCs).
+            files["bblayers.conf"] = files["bblayers.conf"].replace(
+                "/meta-openembedded/meta-networking ",
+                "/meta-openembedded/meta-networking /work/sources/meta-openembedded/meta-multimedia ")
             files["local.conf"] = files["local.conf"].replace(
                 "include int-local.conf", "require conf/distro/include/int-live.inc\ninclude int-local.conf")
         if profile == "browser":

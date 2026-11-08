@@ -134,6 +134,7 @@ class ProfileTests(unittest.TestCase):
         local = (conf/'local.conf').read_text()
         self.assertLess(local.index('int-desktop.inc'), local.index('int-live.inc'))
         self.assertIn('/src/meta-int-desktop', (conf/'bblayers.conf').read_text())
+        self.assertIn('/meta-openembedded/meta-multimedia ', (conf/'bblayers.conf').read_text())
         self.assertFalse((self.work/'build-desktop/conf/local.conf').exists())
         with mock.patch.object(helper, 'container') as container:
             helper.dispatch(SimpleNamespace(profile='live', command='build', target=None), self.work)
@@ -152,8 +153,8 @@ class ProfileTests(unittest.TestCase):
             '/src/meta-int-desktop"', '/src/meta-int-desktop /work/sources/meta-browser/meta-firefox"'))
         order = [layer.rsplit('/', 1)[-1] for layer in
                  layers.split('BBLAYERS = "', 1)[1].split('"', 1)[0].split()]
-        self.assertEqual(order, ['meta', 'meta-oe', 'meta-python', 'meta-networking', 'meta-int',
-                                 'meta-wayland', 'meta-int-desktop', 'meta-firefox'])
+        self.assertEqual(order, ['meta', 'meta-oe', 'meta-python', 'meta-networking', 'meta-multimedia',
+                                 'meta-int', 'meta-wayland', 'meta-int-desktop', 'meta-firefox'])
         self.assertNotIn('meta-clang', layers)
         local = (conf/'local.conf').read_text()
         self.assertEqual(local, (live/'local.conf').read_text().replace(
