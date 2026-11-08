@@ -23,5 +23,12 @@ hardware.
    shows nmap and gnupg removed, grim and int-audio present; marker = 0
    ([screenshot](evidence/apps-int-os-02-after-reboot.png)).
 
-Sound playback into the virtual card: see the result below (pending at the
-time of writing).
+6. Sound playback: in a desktop terminal,
+   `dd if=/dev/urandom bs=192000 count=10 | pw-cat -p -a --format s16 --rate 48000 --channels 2 -`
+   returned 0 ([screenshot](evidence/audio-02-played.png)). The WAV file
+   written by QEMU's audio backend holds 15.1 s at 44.1 kHz with 881 977
+   non-zero samples (peak 20 328 at the default volume 0.40): the signal went
+   from PipeWire through ALSA to the virtual Intel HDA card.
+
+Not tested: real speakers or headphones, HDMI audio, microphones, volume keys,
+Bluetooth (not built), PulseAudio-only applications (no pipewire-pulse yet).
