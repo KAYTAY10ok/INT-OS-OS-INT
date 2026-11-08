@@ -159,6 +159,15 @@ class FeedProtocolTests(unittest.TestCase):
                                               'corrupt-rpm-indexed')['passed'])
         self.assertFalse(feed.analyze_log(serial, process, 'success')['passed'])
 
+    def test_altered_primary_case_requires_metadata_rejection_and_installed_state(self):
+        markers = feed.CASE_MARKERS['altered-primary']
+        serial = '\n'.join((*markers, 'reboot: Power down'))
+        self.assertTrue(feed.analyze_log(serial, {'returncode': 0}, 'altered-primary')['passed'])
+        for marker in markers:
+            self.assertFalse(feed.analyze_log(serial.replace(marker, ''), {'returncode': 0},
+                                              'altered-primary')['passed'])
+        self.assertFalse(feed.analyze_log(serial, {'returncode': 0}, 'success')['passed'])
+
     def test_stale_package_case_requires_checksum_stage_and_installed_state(self):
         markers = feed.CASE_MARKERS['stale-rpm-checksum']
         serial = '\n'.join((*markers, 'reboot: Power down'))

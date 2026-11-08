@@ -69,3 +69,6 @@ freshly signed metadata; see [VM evidence](validation-feed-corrupt-vm-2026-11-08
 
 The `stale-rpm-checksum` case verifies rejection of package bytes modified
 after indexing; see [VM evidence](validation-feed-stale-checksum-vm-2026-11-08.md).
+
+The `altered-primary` case tests referenced metadata checksum enforcement;
+see [VM evidence](validation-feed-primary-vm-2026-11-08.md).

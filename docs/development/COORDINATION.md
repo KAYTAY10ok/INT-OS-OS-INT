@@ -4,6 +4,14 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-08 — Codex: primary metadata checksum enforced in VM
+
+Added and passed `altered-primary`: valid metadata control, authentic pinned
+repomd, modified referenced primary file rejected with a checksum error, and
+installed version/file remain 1.0. See [proof](validation-feed-primary-vm-2026-11-08.md).
+No consumers or production feed were enabled; recovery and other trust paths
+still require separate qualification.
+
 ## 2026-11-08 — Codex: stale package checksum rejected in VM
 
 Added and passed `stale-rpm-checksum`: metadata signature/control and v2

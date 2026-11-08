@@ -40,6 +40,12 @@ MARKERS = (
     "INT_FEED_SHUTDOWN",
 )
 CASE_MARKERS = {
+    "altered-primary": (
+        "INT_FEED_CHECK:pin:PASS", "INT_FEED_CHECK:install-v1:PASS",
+        "INT_FEED_CHECK:primary-metadata:PASS", "INT_FEED_CHECK:primary-fixture:PASS",
+        "INT_FEED_CHECK:primary-dnf-rejected:PASS", "INT_FEED_CHECK:unchanged-v1:PASS",
+        "INT_FEED_CASE:altered-primary:PASS", "INT_FEED_SHUTDOWN",
+    ),
     "stale-rpm-checksum": (
         "INT_FEED_CHECK:pin:PASS", "INT_FEED_CHECK:install-v1:PASS",
         "INT_FEED_CHECK:stale-metadata:PASS", "INT_FEED_CHECK:stale-fixture:PASS",

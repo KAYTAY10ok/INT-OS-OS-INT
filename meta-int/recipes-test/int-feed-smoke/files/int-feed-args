@@ -23,7 +23,7 @@ for token in $(cat "$1"); do
             ;;
     esac
 done
-case "$test_case" in success|stale-rpm-checksum|corrupt-rpm-indexed|unsigned-rpm|wrong-key-rpm|missing-metadata-signature|altered-repomd) ;; *) exit 1 ;; esac
+case "$test_case" in success|altered-primary|stale-rpm-checksum|corrupt-rpm-indexed|unsigned-rpm|wrong-key-rpm|missing-metadata-signature|altered-repomd) ;; *) exit 1 ;; esac
 printf '%s\n' "$fingerprint" | grep -Eq '^[0-9A-F]{40}$'
 if test "$mode" = --case; then
     printf '%s\n' "$test_case"

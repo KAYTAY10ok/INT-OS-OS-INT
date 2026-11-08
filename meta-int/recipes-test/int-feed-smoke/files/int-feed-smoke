@@ -87,6 +87,16 @@ gpgcheck=1
 repo_gpgcheck=1
 skip_if_unavailable=0
 EOF
+cat > "$work/repos/intfeed-primary.repo" <<EOF
+[intfeed-primary]
+name=INT disposable altered primary metadata feed
+baseurl=file://$work/mount/altered-primary
+enabled=0
+gpgkey=file://$work/trusted.asc
+gpgcheck=1
+repo_gpgcheck=1
+skip_if_unavailable=0
+EOF
 test "$(cat /sys/block/vdb/ro)" = 1
 mount -t ext4 -o ro,nosuid,nodev,noexec /dev/vdb "$work/mount"
 key="$work/mount/trusted-public-key.asc"
@@ -230,6 +240,50 @@ if test "$test_case" = wrong-key-rpm; then
     check_version 1.0
     echo 'INT_FEED_CHECK:unchanged-v1:PASS'
     echo 'INT_FEED_CASE:wrong-key-rpm:PASS'
+    result=PASS
+    exit 0
+fi
+if test "$test_case" = altered-primary; then
+    # A signed repomd references primary metadata changed after signing.
+    # Confirm the untouched repository first in this fresh guest.
+    dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-v2 --refresh makecache
+    candidate=$(dnf -q -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-v2 \
+        repoquery --available --qf '%{name} %{version} %{release}' int-feed-probe)
+    test "$candidate" = 'int-feed-probe 2.0 r0'
+    echo 'INT_FEED_CHECK:primary-metadata:PASS'
+    stale="$work/mount/altered-primary"
+    valid="$work/mount/valid-v2"
+    gpg --batch --no-options --homedir "$work/home" --import "$work/trusted.asc" > "$work/gpg-import.log" 2>&1
+    gpg --batch --no-options --homedir "$work/home" --status-fd 1 --verify \
+        "$stale/repodata/repomd.xml.asc" "$stale/repodata/repomd.xml" > "$work/primary-signature.log" 2>&1
+    cat "$work/primary-signature.log"
+    grep -Fq "[GNUPG:] VALIDSIG $fingerprint " "$work/primary-signature.log"
+    # Signed repomd is identical; the referenced primary file must differ.
+    cmp "$valid/repodata/repomd.xml" "$stale/repodata/repomd.xml"
+    set -- "$stale"/repodata/*-primary.xml.gz
+    test "$#" -eq 1 && test -s "$1"
+    primary_name=${1##*/}
+    test -s "$valid/repodata/$primary_name"
+    good_hash=$(sha256sum "$valid/repodata/$primary_name"); good_hash=${good_hash%% *}
+    bad_hash=$(sha256sum "$1"); bad_hash=${bad_hash%% *}
+    test "$good_hash" != "$bad_hash"
+    echo 'INT_FEED_CHECK:primary-fixture:PASS'
+    if dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-primary \
+        --refresh makecache > "$work/primary-dnf.log" 2>&1; then
+        echo 'DNF unexpectedly accepted mismatching primary metadata' >&2
+        exit 1
+    else
+        dnf_status=$?
+    fi
+    cat "$work/primary-dnf.log"
+    test "$dnf_status" -ne 0
+    grep -Fq "Downloading successful, but checksum doesn't match." "$work/primary-dnf.log"
+    grep -Fq 'primary.xml.gz' "$work/primary-dnf.log"
+    grep -Fq "Failed to download metadata for repo 'intfeed-primary'" "$work/primary-dnf.log"
+    echo 'INT_FEED_CHECK:primary-dnf-rejected:PASS'
+    check_version 1.0
+    echo 'INT_FEED_CHECK:unchanged-v1:PASS'
+    echo 'INT_FEED_CASE:altered-primary:PASS'
     result=PASS
     exit 0
 fi
