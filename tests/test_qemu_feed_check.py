@@ -177,6 +177,15 @@ class FeedProtocolTests(unittest.TestCase):
                                               'stale-rpm-checksum')['passed'])
         self.assertFalse(feed.analyze_log(serial, {'returncode': 0}, 'success')['passed'])
 
+    def test_unknown_metadata_signer_requires_fixture_and_dnf_rejection(self):
+        markers = feed.CASE_MARKERS['wrong-key-metadata']
+        serial = '\n'.join((*markers, 'reboot: Power down'))
+        self.assertTrue(feed.analyze_log(serial, {'returncode': 0}, 'wrong-key-metadata')['passed'])
+        for marker in markers:
+            self.assertFalse(feed.analyze_log(serial.replace(marker, ''), {'returncode': 0},
+                                              'wrong-key-metadata')['passed'])
+        self.assertFalse(feed.analyze_log(serial, {'returncode': 0}, 'success')['passed'])
+
     def test_detects_input_or_snapshot_changes(self):
         with tempfile.TemporaryDirectory() as tmp:
             source, copy = Path(tmp) / 'src', Path(tmp) / 'copy'

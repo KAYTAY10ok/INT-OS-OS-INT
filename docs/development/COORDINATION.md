@@ -4,6 +4,14 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-08 — Codex: unknown metadata signer rejected in VM
+
+`wrong-key-metadata` passed with a positive signature control, NO_PUBKEY,
+DNF metadata rejection and unchanged installed v1. See
+[proof](validation-feed-unknown-metadata-vm-2026-11-08.md). All ten laboratory
+fixture variants now have a scoped target guest acceptance/rejection record.
+This does not qualify HTTPS transport, interrupted updates or a public feed.
+
 ## 2026-11-08 — Codex: primary metadata checksum enforced in VM
 
 Added and passed `altered-primary`: valid metadata control, authentic pinned

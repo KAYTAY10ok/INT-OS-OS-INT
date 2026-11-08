@@ -72,3 +72,6 @@ after indexing; see [VM evidence](validation-feed-stale-checksum-vm-2026-11-08.m
 
 The `altered-primary` case tests referenced metadata checksum enforcement;
 see [VM evidence](validation-feed-primary-vm-2026-11-08.md).
+
+The `wrong-key-metadata` case verifies rejection of an untrusted metadata
+signer; see [VM evidence](validation-feed-unknown-metadata-vm-2026-11-08.md).

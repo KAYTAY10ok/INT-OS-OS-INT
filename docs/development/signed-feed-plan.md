@@ -47,6 +47,29 @@ this laboratory procedure for release signing. The JSON report is printed only
 after all its checks pass. Preserve the captured output because `rm_work` may
 remove the recipe's task logs.
 
+## Laboratory fixture coverage (2026-11-08)
+
+These are individual offline QEMU tests, not a production update service.
+Each negative case starts with a valid v1 installation and checks it remains
+unchanged. The fixture disk and signing keys are disposable.
+
+| Fixture | Target guest evidence |
+| --- | --- |
+| valid-v1 / valid-v2 | [Install, update and repeat](validation-feed-vm-2026-11-06.md) |
+| unsigned-rpm | [Unsigned rejection](validation-feed-unsigned-vm-2026-11-06.md) |
+| wrong-key-rpm | [Untrusted package key](validation-feed-wrong-key-vm-2026-11-06.md) |
+| corrupt-rpm-indexed | [Corrupt payload with fresh index](validation-feed-corrupt-vm-2026-11-08.md) |
+| stale-rpm-checksum | [Changed package bytes](validation-feed-stale-checksum-vm-2026-11-08.md) |
+| altered-primary | [Referenced metadata checksum](validation-feed-primary-vm-2026-11-08.md) |
+| wrong-key-metadata | [Untrusted metadata signer](validation-feed-unknown-metadata-vm-2026-11-08.md) |
+| missing-metadata-signature | [Missing signature](validation-feed-missing-signature-vm-2026-11-06.md) |
+| altered-repomd | [Modified signed metadata](validation-feed-altered-repomd-vm-2026-11-06.md) |
+
+The [opt-in trust package](package-feed-client.md) defines how a real address
+and public key can enter an image. Release signing custody, hosting, HTTPS
+acceptance, revocation/rotation, freshness and interruption recovery remain
+required before enabling end-user installs. No test key is a release key.
+
 ## Current prerequisites
 
 The feed build now contains native `rpm`, `rpmkeys`, `rpmsign`,

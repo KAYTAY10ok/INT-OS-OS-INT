@@ -97,6 +97,16 @@ gpgcheck=1
 repo_gpgcheck=1
 skip_if_unavailable=0
 EOF
+cat > "$work/repos/intfeed-unknown.repo" <<EOF
+[intfeed-unknown]
+name=INT disposable untrusted metadata signer feed
+baseurl=file://$work/mount/wrong-key-metadata
+enabled=0
+gpgkey=file://$work/trusted.asc
+gpgcheck=1
+repo_gpgcheck=1
+skip_if_unavailable=0
+EOF
 test "$(cat /sys/block/vdb/ro)" = 1
 mount -t ext4 -o ro,nosuid,nodev,noexec /dev/vdb "$work/mount"
 key="$work/mount/trusted-public-key.asc"
@@ -428,6 +438,72 @@ EOF
     check_version 1.0
     echo 'INT_FEED_CHECK:unchanged-v1:PASS'
     echo 'INT_FEED_CASE:missing-metadata-signature:PASS'
+    result=PASS
+    exit 0
+fi
+if test "$test_case" = wrong-key-metadata; then
+    # Positive control before testing an untrusted metadata signing key.
+    dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-v2 --refresh makecache
+    candidate=$(dnf -q -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-v2 \
+        repoquery --available --qf '%{name} %{version} %{release}' int-feed-probe)
+    test "$candidate" = 'int-feed-probe 2.0 r0'
+    check_version 1.0
+    echo 'INT_FEED_CHECK:signed-metadata-control:PASS'
+
+    altered="$work/mount/wrong-key-metadata"
+    valid="$work/mount/valid-v2"
+    signature="$altered/repodata/repomd.xml.asc"
+    test -s "$signature"
+    test -s "$altered/repodata/repomd.xml"
+    test -s "$altered/int-feed-probe-2.0-r0.noarch.rpm"
+    test -s "$valid/repodata/repomd.xml"
+    gpg --batch --no-options --homedir "$work/home" --import "$work/trusted.asc" > "$work/gpg-import.log" 2>&1
+    # The same metadata bytes work with the pinned signature, but the
+    # candidate signature requires a key absent from this isolated keyring.
+    cmp "$altered/repodata/repomd.xml" "$valid/repodata/repomd.xml"
+    gpg --batch --no-options --no-auto-key-retrieve --homedir "$work/home" --status-fd 1 --verify \
+        "$valid/repodata/repomd.xml.asc" "$valid/repodata/repomd.xml" > "$work/unknown-good.log" 2>&1
+    cat "$work/unknown-good.log"
+    grep -Fq "[GNUPG:] VALIDSIG $fingerprint " "$work/unknown-good.log"
+    if gpg --batch --no-options --no-auto-key-retrieve --homedir "$work/home" --status-fd 1 --verify \
+        "$signature" "$altered/repodata/repomd.xml" > "$work/unknown-bad.log" 2>&1; then
+        echo 'Unknown metadata signer unexpectedly trusted' >&2
+        exit 1
+    fi
+    cat "$work/unknown-bad.log"
+    grep -Fq '[GNUPG:] NO_PUBKEY ' "$work/unknown-bad.log"
+    if grep -Fq '[GNUPG:] VALIDSIG ' "$work/unknown-bad.log"; then exit 1; fi
+    echo 'INT_FEED_CHECK:wrong-key-metadata-fixture:PASS'
+
+    mkdir -m 0700 "$work/cache-altered" "$work/persist-altered"
+    cat > "$work/dnf-altered.conf" <<EOF
+[main]
+reposdir=$work/repos
+cachedir=$work/cache-altered
+persistdir=$work/persist-altered
+plugins=0
+gpgcheck=1
+localpkg_gpgcheck=1
+assumeyes=1
+EOF
+    if dnf -c "$work/dnf-altered.conf" --disablerepo='*' --enablerepo=intfeed-unknown \
+        --refresh makecache > "$work/altered-dnf.log" 2>&1; then
+        echo 'DNF unexpectedly accepted altered signed metadata' >&2
+        exit 1
+    else
+        dnf_status=$?
+    fi
+    cat "$work/altered-dnf.log"
+    test "$dnf_status" -ne 0
+    if ! grep -Fq 'repomd.xml GPG signature verification error: Bad GPG signature' "$work/altered-dnf.log" && \
+       ! grep -Fq 'repomd.xml GPG signature verification failed: Bad GPG signature' "$work/altered-dnf.log"; then
+        echo 'DNF failed for a reason other than the expected bad signature' >&2
+        exit 1
+    fi
+    echo 'INT_FEED_CHECK:wrong-key-metadata-rejected:PASS'
+    check_version 1.0
+    echo 'INT_FEED_CHECK:unchanged-v1:PASS'
+    echo 'INT_FEED_CASE:wrong-key-metadata:PASS'
     result=PASS
     exit 0
 fi
