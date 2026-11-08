@@ -32,3 +32,15 @@ hardware.
 
 Not tested: real speakers or headphones, HDMI audio, microphones, volume keys,
 Bluetooth (not built), PulseAudio-only applications (no pipewire-pulse yet).
+
+## Live ISO from `5a905e1` (int-wifi, volume keys, volume segment)
+
+Live session, blue theme ([screenshot](evidence/audio-03-volume-bar-wifi.png)):
+
+- The status bar shows `VOL 40%` (default PipeWire sink volume).
+- `int-wifi status` without a Wi-Fi card: "No Wi-Fi card found.", exit code 4.
+- The volume keys could **not** be checked: QEMU's USB keyboard does not send
+  the multimedia key sent through QMP (`volumeup`), the volume stayed at 0.40.
+  They need a real keyboard.
+- `wpctl` prints RTKit warnings (no RTKit daemon, it needs polkit); PipeWire
+  runs without realtime priority. Cosmetic; not fixed.
