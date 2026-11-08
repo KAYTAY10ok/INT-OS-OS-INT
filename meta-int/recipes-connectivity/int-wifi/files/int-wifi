@@ -1,0 +1,90 @@
+#!/bin/sh
+# int-wifi: connect to Wi-Fi without editing files.
+#   int-wifi status               interfaces, connection and address
+#   int-wifi scan                 nearby networks (asks for your password: sudo)
+#   int-wifi connect "NAME"       asks the Wi-Fi password (hidden), then connects
+#   int-wifi forget               forget the saved network on this interface
+# The password never appears on the command line or in logs: it is read from
+# the terminal and only its WPA hash is stored (root-only file).
+set -eu
+PATH=${INT_WIFI_PATH:-/usr/sbin:/usr/bin:/sbin:/bin}
+CONF_DIR=${INT_WIFI_CONF_DIR:-/etc/wpa_supplicant}
+SYS_NET=${INT_WIFI_SYS_NET:-/sys/class/net}
+
+fr() { case "$(sed -n 's/^INT_LANGUAGE=//p' /etc/int/install.conf 2>/dev/null)${LANG:-}" in fr*) return 0 ;; esac; return 1; }
+say() { if fr; then printf '%s\n' "$1"; else printf '%s\n' "$2"; fi; }
+die() { say "$1" "$2" >&2; exit "${3:-1}"; }
+
+wifi_iface() {
+    for dev in "$SYS_NET"/*; do
+        [ -d "$dev/wireless" ] || [ -d "$dev/phy80211" ] || continue
+        basename "$dev"; return 0
+    done
+    return 1
+}
+
+as_root() {
+    if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo -- "$@"; fi
+}
+
+iface=$(wifi_iface) || iface=
+cmd=${1:-status}
+case "$cmd" in
+status)
+    [ -n "$iface" ] || die "Aucune carte Wi-Fi detectee." "No Wi-Fi card found." 4
+    printf 'interface: %s\n' "$iface"
+    iw dev "$iface" link 2>/dev/null | sed -n 's/^[[:space:]]*SSID: /ssid: /p; s/^[[:space:]]*signal: /signal: /p'
+    ip -brief address show dev "$iface" 2>/dev/null | awk '{ $1=""; $2=""; sub(/^  */, ""); if ($0 != "") print "address: " $0 }'
+    ;;
+scan)
+    [ -n "$iface" ] || die "Aucune carte Wi-Fi detectee." "No Wi-Fi card found." 4
+    as_root ip link set "$iface" up
+    as_root iw dev "$iface" scan | awk '
+        /^BSS / { if (ssid != "") print sig "\t" ssid; ssid = ""; sig = "" }
+        /^[[:space:]]*signal:/ { sig = $2 " dBm" }
+        /^[[:space:]]*SSID: / { sub(/^[[:space:]]*SSID: /, ""); ssid = $0 }
+        END { if (ssid != "") print sig "\t" ssid }' | sort -t ' ' -k1,1nr | uniq | head -n 30
+    ;;
+connect)
+    [ -n "$iface" ] || die "Aucune carte Wi-Fi detectee." "No Wi-Fi card found." 4
+    ssid=${2:-}
+    [ "$#" -eq 2 ] && [ -n "$ssid" ] || die "Usage : int-wifi connect \"NOM DU RESEAU\"" 'Usage: int-wifi connect "NETWORK NAME"' 2
+    [ "$(printf '%s' "$ssid" | wc -c)" -le 32 ] || die "Nom de reseau trop long (32 caracteres max)." "Network name too long (32 characters max)." 2
+    [ "$(printf '%s' "$ssid" | wc -c)" -eq "$(printf '%s' "$ssid" | tr -d '\000-\037\177' | wc -c)" ] || die "Nom de reseau non pris en charge (caractere de controle)." "Unsupported network name (control character)." 2
+    case "$ssid" in *'"'*|*'\'*) die "Nom de reseau non pris en charge (guillemet ou barre oblique inverse)." "Unsupported network name (quote or backslash)." 2 ;; esac
+    [ -t 0 ] || die "Le mot de passe se tape dans un terminal." "Type the password in a terminal." 2
+    if fr; then printf 'Mot de passe Wi-Fi pour "%s" (invisible, vide = reseau ouvert) : ' "$ssid"; else printf 'Wi-Fi password for "%s" (hidden, empty = open network): ' "$ssid"; fi
+    old=$(stty -g); stty -echo; IFS= read -r pass || pass=; stty "$old"; echo
+    tmp=$(mktemp); trap 'rm -f "$tmp"' EXIT; chmod 600 "$tmp"
+    {
+        echo "ctrl_interface=/run/wpa_supplicant"
+        echo "update_config=0"
+        if [ -z "$pass" ]; then
+            printf 'network={\n\tssid="%s"\n\tkey_mgmt=NONE\n}\n' "$ssid"
+        else
+            n=${#pass}
+            [ "$n" -ge 8 ] && [ "$n" -le 63 ] || die "Le mot de passe WPA fait 8 a 63 caracteres." "A WPA password has 8 to 63 characters." 2
+            # The passphrase goes through stdin, never argv; keep only the hash.
+            printf '%s\n' "$pass" | wpa_passphrase "$ssid" | grep -v '^[[:space:]]*#psk='
+        fi
+    } > "$tmp"
+    pass=
+    as_root install -D -m 600 "$tmp" "$CONF_DIR/wpa_supplicant-$iface.conf"
+    as_root systemctl enable --now "wpa_supplicant@$iface.service" >/dev/null 2>&1 || true
+    as_root systemctl restart "wpa_supplicant@$iface.service"
+    say "Connexion a \"$ssid\"... (int-wifi status pour verifier)" "Connecting to \"$ssid\"... (int-wifi status to check)"
+    ;;
+forget)
+    [ -n "$iface" ] || die "Aucune carte Wi-Fi detectee." "No Wi-Fi card found." 4
+    as_root systemctl disable --now "wpa_supplicant@$iface.service" >/dev/null 2>&1 || true
+    as_root rm -f "$CONF_DIR/wpa_supplicant-$iface.conf"
+    say "Reseau oublie." "Network forgotten."
+    ;;
+-h|--help|help)
+    sed -n '2,8s/^# \{0,1\}//p' "$0"
+    ;;
+*)
+    sed -n '2,8s/^# \{0,1\}//p' "$0" >&2
+    exit 2
+    ;;
+esac

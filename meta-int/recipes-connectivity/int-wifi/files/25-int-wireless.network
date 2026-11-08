@@ -1,0 +1,11 @@
+# INT: any Wi-Fi interface gets its address by DHCP once int-wifi has
+# connected it (wpa_supplicant@IFACE). Temporary IPv6 addresses for privacy.
+[Match]
+Type=wlan
+
+[Network]
+DHCP=yes
+IPv6PrivacyExtensions=yes
+
+[DHCPv4]
+RouteMetric=600

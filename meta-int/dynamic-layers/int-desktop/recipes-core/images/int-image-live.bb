@@ -36,6 +36,7 @@ IMAGE_INSTALL:append = " \
     llama-cpp \
     procps \
     int-apps \
+    int-wifi \
     ${INT_APP_PRESET_PACKAGES} \
 "
 # Packages of the "media" presets in int-apps (kept or removed at first start).

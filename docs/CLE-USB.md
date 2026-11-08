@@ -83,6 +83,10 @@ retirés.
 
 ## 6. Commandes utiles
 
+- Wi-Fi : `int-wifi scan` (réseaux proches), `int-wifi connect "Nom du réseau"`
+  (mot de passe invisible ; seule sa forme chiffrée WPA est enregistrée),
+  `int-wifi status`, `int-wifi forget`. Le câble Ethernet marche sans réglage.
+
 - `int-ai mets le theme rose`, `int-ai etat du systeme` : IA locale (les
   thèmes et la lecture sans confirmation, tout le reste est confirmé).
 - `int-apps list` : état des groupes d'applications.
