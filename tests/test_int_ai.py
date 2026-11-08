@@ -402,7 +402,7 @@ class FallbackParserTest(unittest.TestCase):
         "security check": ("security.check", {}),
         "check system integrity": ("security.check", {}),
         "installe le paquet nmap": ("packages.install", {"name": "nmap"}),
-        "install firefox": ("packages.install", {"name": "firefox"}),
+        "install firefox": ("apps.add", {"name": "web"}),
         "affiche le tableau de bord": ("dashboard.show", {"style": "default"}),
         "show the dashboard in compact style": ("dashboard.show", {"style": "compact"}),
         "liste mes fichiers": ("files.list", {"path": "~"}),
@@ -652,3 +652,31 @@ class PackagingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AppPresetRulesTest(unittest.TestCase):
+    def test_offline_rules_pick_presets(self):
+        cases = {
+            "liste les groupes d'applications": ("apps.list", {}),
+            "list apps": ("apps.list", {}),
+            "installe les outils de développement": ("apps.add", {"name": "dev"}),
+            "install the browser": ("apps.add", {"name": "web"}),
+            "installe firefox": ("apps.add", {"name": "web"}),
+            "ajoute le son": ("apps.add", {"name": "audio"}),
+            "retire le groupe cyber": ("apps.remove", {"name": "cyber"}),
+            "installe nmap": ("packages.install", {"name": "nmap"}),
+        }
+        for text, (name, args) in cases.items():
+            with self.subTest(text=text):
+                action = ai.validate(ai.parse_rules(text))
+                self.assertEqual((action["action"], action["args"]), (name, args))
+        self.assertTrue(ai.is_destructive("supprime le groupe dev"))
+        self.assertEqual(set(ai.APP_WORDS.values()), set(ai.APP_PRESETS))
+
+    def test_preset_names_follow_int_apps_files(self):
+        presets = Path(__file__).resolve().parents[1] / "meta-int/recipes-core/int-apps/files/presets"
+        self.assertEqual(sorted(p.stem for p in presets.glob("*.preset")), sorted(ai.APP_PRESETS))
+        schema = ai.action_schema()
+        add = [v for v in schema["oneOf"] if v["properties"]["action"].get("const") == "apps.add"]
+        if add:
+            self.assertEqual(add[0]["properties"]["args"]["properties"]["name"]["enum"], list(ai.APP_PRESETS))

@@ -326,6 +326,44 @@ def _r_create(m):
     return {"action": "files.create", "args": {"path": m["p"], "content": content}}
 
 
+# Application presets (int-apps). Checked before the package rule so that
+# "installe les outils dev" or "install the browser" pick a preset.
+APP_WORDS = {
+    "cyber": "cyber", "reseau": "cyber", "réseau": "cyber", "network": "cyber", "pentest": "cyber",
+    "opsec": "opsec", "vie privee": "opsec", "vie privée": "opsec", "privacy": "opsec", "anonymat": "opsec",
+    "terminal": "terminal",
+    "bureau": "desktop-tools", "desktop": "desktop-tools",
+    "dev": "dev", "developpement": "dev", "développement": "dev", "development": "dev",
+    "programmation": "dev", "programming": "dev",
+    "navigateur": "web", "browser": "web", "web": "web", "firefox": "web",
+    "audio": "audio", "son": "audio", "sound": "audio",
+    "multimedia": "multimedia", "multimédia": "multimedia", "video": "multimedia", "vidéo": "multimedia",
+}
+_APP = r"(?P<g>" + "|".join(sorted((re.escape(w) for w in APP_WORDS), key=len, reverse=True)) + r")"
+_GROUP = r"(?:(?:le|les|la|l'|un|the|my)\s*)?(?:(?:groupe|outils|apps?|applications?|group|tools)\s+(?:de\s+|d'|du\s+|for\s+)?)?"
+_APP_RULES_START = len(RULES)
+
+
+@rule(r"(?:liste(?:r)?|affiche(?:r)?|montre(?:r)?|quels?\s+sont|list|show)\s+(?:les\s+|mes\s+|the\s+|my\s+)?"
+      r"(?:groupes\s+d'applications|groupes|presets|applications|apps|application\s+groups)(?:\s+install[ée]e?s|\s+installed)?")
+def _r_apps_list(m):
+    return {"action": "apps.list", "args": {}}
+
+
+@rule(r"(?:installe(?:r)?|ajoute(?:r)?|install|add)\s+" + _GROUP + _APP + r"(?:\s+(?:tools|apps|group))?")
+def _r_apps_add(m):
+    return {"action": "apps.add", "args": {"name": APP_WORDS[m["g"].lower()]}}
+
+
+@rule(r"(?:retire(?:r)?|enl[eè]ve(?:r)?)\s+" + _GROUP + _APP)
+def _r_apps_remove(m):
+    return {"action": "apps.remove", "args": {"name": APP_WORDS[m["g"].lower()]}}
+
+
+# Move the preset rules ahead of the generic package and file rules.
+RULES[:] = RULES[_APP_RULES_START:] + RULES[:_APP_RULES_START]
+
+
 # Destructive intents have no action in the registry. Refuse them before any
 # model call: a small model may otherwise map them to an unrelated action.
 DESTRUCTIVE = re.compile(
