@@ -41,7 +41,7 @@ et n'est publié nulle part. « Validé » = testé dans QEMU (PC UEFI virtuel),
 - [x] Choix au 1er démarrage du bureau sur un système installé ; les groupes non choisis sont retirés hors ligne après confirmation ; cryptsetup et le système de base jamais retirés
 - [x] Raccourcis des outils du bureau : Impr écran, Super+Impr (zone), Super+Échap (verrouillage), luminosité
 - [x] Tests sur l'hôte (15) ; ISO construite avec dnf/rpm et les paquets des groupes
-- [ ] Test QEMU installation + premier démarrage avec choix des applications (en cours)
+- [x] Validé QEMU : installation OS-INT, choix des applications au 1er démarrage, retrait hors ligne, vérifié après redémarrage (`docs/development/validation-apps-presets-2026-11-08.md`)
 
 ### IA locale « super commande »
 - [x] `int-ai` : llama.cpp + Qwen2.5 (taille choisie à l'installation : aucune / 1.5B / 7B, téléchargement au 1er démarrage)
