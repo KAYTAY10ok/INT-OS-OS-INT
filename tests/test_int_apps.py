@@ -102,7 +102,7 @@ class AppsTest(unittest.TestCase):
     def test_presets_parse_and_media_packages_are_on_the_iso(self):
         presets = apps.presets()
         names = [p["name"] for p in presets]
-        self.assertEqual(names[:4], ["cyber", "opsec", "terminal", "desktop-tools"])
+        self.assertEqual(names[:6], ["cyber", "opsec", "terminal", "desktop-tools", "audio", "dev"])
         self.assertEqual(sorted(names), sorted(ai.APP_PRESETS))
         live = LIVE.read_text()
         listed = set(re.search(r'INT_APP_PRESET_PACKAGES = "(.*?)"', live, re.S).group(1).replace("\\", " ").split())
@@ -141,9 +141,9 @@ class AppsTest(unittest.TestCase):
 
     def test_add_with_configured_feed_uses_dnf_argv(self):
         (self.root / "repos" / "int.repo").write_text("[int]\nbaseurl=https://feed.example/int\ngpgcheck=1\n")
-        code, _, _ = self.run_main("add", "audio", "--yes")
+        code, _, _ = self.run_main("add", "multimedia", "--yes")
         self.assertEqual(code, 0)
-        self.assertIn("dnf install --assumeyes -- pipewire wireplumber", self.log.read_text())
+        self.assertIn("dnf install --assumeyes -- mpv ffmpeg", self.log.read_text())
 
     def test_changes_need_confirmation(self):
         code, out, _ = self.run_main("remove", "dev", stdin="n\n")
@@ -169,6 +169,7 @@ class AppsTest(unittest.TestCase):
         db = self.db_set()
         # INT-OS default keeps only the desktop tools.
         self.assertIn("grim", db)
+        self.assertIn("int-audio", db)
         for gone in ("nmap", "tor", "htop", "git"):
             self.assertNotIn(gone, db)
         self.assertIn("cryptsetup", db)
@@ -189,7 +190,7 @@ class AppsTest(unittest.TestCase):
         out = io.StringIO()
         with mock.patch.object(sys, "stdout", out), mock.patch.object(sys, "stderr", io.StringIO()):
             self.assertEqual(apps.choose(apps.presets(), True, answer="99"), apps.USAGE)
-            self.assertEqual(apps.choose(apps.presets(), True, answer="5"), 0)
+            self.assertEqual(apps.choose(apps.presets(), True, answer="6"), 0)
         db = self.db_set()
         self.assertIn("gdb", db)
         self.assertNotIn("grim", db)

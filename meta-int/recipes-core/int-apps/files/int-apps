@@ -98,7 +98,7 @@ def presets():
         files = sorted(f for f in os.listdir(SHARE) if f.endswith(".preset"))
     except OSError:
         return found
-    order = {"cyber": 0, "opsec": 1, "terminal": 2, "desktop-tools": 3}
+    order = {"cyber": 0, "opsec": 1, "terminal": 2, "desktop-tools": 3, "audio": 4}
     for file in files:
         name = file[:-len(".preset")]
         if not NAME_RE.match(name):

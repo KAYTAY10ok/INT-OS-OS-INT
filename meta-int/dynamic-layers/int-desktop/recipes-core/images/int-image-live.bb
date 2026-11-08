@@ -44,6 +44,7 @@ INT_APP_PRESET_PACKAGES = " \
     htop btop nano tmux zsh rsync unzip \
     grim slurp wl-clipboard mako swaylock swayidle brightnessctl \
     git make strace gdb \
+    int-audio \
 "
 # Keep the rpm database (and dnf) so int-apps can remove presets offline and
 # install feed presets once an INT feed is configured. No feed is configured.
