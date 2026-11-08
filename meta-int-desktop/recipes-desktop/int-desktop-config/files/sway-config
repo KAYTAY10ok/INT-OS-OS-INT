@@ -83,6 +83,8 @@ bindsym $mod+r mode "resize"
 exec /usr/libexec/int-desktop-tools startup
 bindsym Print exec /usr/libexec/int-desktop-tools screenshot
 bindsym $mod+Print exec /usr/libexec/int-desktop-tools screenshot area
+bindsym $mod+F1 exec /usr/bin/int-help show
+for_window [app_id="int-help"] floating enable, resize set 900 520, move position center
 bindsym $mod+Escape exec /usr/libexec/int-desktop-tools lock
 bindsym XF86MonBrightnessUp exec /usr/libexec/int-desktop-tools brightness up
 bindsym XF86MonBrightnessDown exec /usr/libexec/int-desktop-tools brightness down

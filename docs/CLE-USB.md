@@ -70,6 +70,7 @@ retirés.
 
 | Touches | Action |
 | --- | --- |
+| Super+F1 | aide (raccourcis et commandes) |
 | Super+Entrée | terminal |
 | Super+D | lanceur d'applications |
 | Super+I | tableau de bord |
@@ -78,6 +79,7 @@ retirés.
 | Super+Échap | verrouiller l'écran |
 | Super+Maj+Q | fermer la fenêtre |
 | Super+Maj+E | quitter le bureau |
+| Touches volume / luminosité | son et écran (pas vérifiable en QEMU) |
 
 Éteindre : `sudo poweroff`.
 

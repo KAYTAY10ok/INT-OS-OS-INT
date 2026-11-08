@@ -1,0 +1,49 @@
+#!/bin/sh
+# int-help: INT shortcuts and commands (French or English, from the installer).
+#   int-help          print the help
+#   int-help show     open it in a floating terminal (Super+F1)
+PATH=/usr/bin:/bin
+if [ "${1:-}" = show ] && [ -n "${WAYLAND_DISPLAY:-}" ] && command -v foot >/dev/null 2>&1; then
+    exec foot --app-id=int-help sh -c '"$0"; read -r _' "$0"
+fi
+lang=$(sed -n 's/^INT_LANGUAGE=//p' /etc/int/install.conf 2>/dev/null)
+case "${lang:-${LANG:-}}" in
+fr*) cat <<'T'
+  I N T   ·   aide                                   (Super = touche Windows)
+
+  Super+Entree        terminal              Super+D            lanceur d'applications
+  Super+I             tableau de bord       Super+T            changer de theme
+  Super+1..9          espace de travail     Super+Maj+1..9     y envoyer la fenetre
+  Super+F             plein ecran           Super+Maj+Q        fermer la fenetre
+  Super+Echap         verrouiller           Super+Maj+E        quitter le bureau
+  Impr / Super+Impr   capture (ecran/zone)  Touches son/lum.   volume, luminosite
+  Super+F1            cette aide
+
+  int-wifi scan | connect "Nom" | status    Wi-Fi
+  int-apps list | choose                    groupes d'applications
+  int-theme list | set NOM | wallpaper IMG  apparence
+  int-ai "mets le theme rose"               IA locale (les changements sont confirmes)
+  int-session sway|hyprland|autostart off   session du bureau
+  sudo poweroff / sudo reboot               eteindre / redemarrer
+T
+;;
+*) cat <<'T'
+  I N T   ·   help                                   (Super = Windows key)
+
+  Super+Enter         terminal              Super+D            application launcher
+  Super+I             dashboard             Super+T            change theme
+  Super+1..9          workspace             Super+Shift+1..9   move window there
+  Super+F             fullscreen            Super+Shift+Q      close window
+  Super+Escape        lock screen           Super+Shift+E      leave the desktop
+  Print / Super+Print screenshot (all/area) Media keys         volume, brightness
+  Super+F1            this help
+
+  int-wifi scan | connect "Name" | status   Wi-Fi
+  int-apps list | choose                    application groups
+  int-theme list | set NAME | wallpaper IMG appearance
+  int-ai "set the theme to pink"            local AI (changes are confirmed)
+  int-session sway|hyprland|autostart off   desktop session
+  sudo poweroff / sudo reboot               shut down / restart
+T
+;;
+esac

@@ -276,3 +276,18 @@ class VolumeTest(unittest.TestCase):
         tools = files / "int-desktop-tools"
         result = subprocess.run(["/bin/sh", str(tools), "volume", "up"], capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 0)  # no wpctl on the host: does nothing
+
+
+class HelpTest(unittest.TestCase):
+    def test_help_prints_in_both_languages_and_is_bound(self):
+        files = ROOT / "meta-int-desktop/recipes-desktop/int-desktop-config/files"
+        script = files / "int-help"
+        en = subprocess.run(["/bin/sh", str(script)], env={"LANG": "C"}, capture_output=True, text=True, timeout=10)
+        fr = subprocess.run(["/bin/sh", str(script)], env={"LANG": "fr_CH.UTF-8"}, capture_output=True, text=True,
+                            timeout=10)
+        self.assertIn("int-wifi", en.stdout)
+        self.assertIn("lanceur", fr.stdout)
+        sway = (files / "sway-config").read_text()
+        for binding in ("$mod+F1", "$mod+Escape", "$mod+d", "$mod+Return", "Print", "$mod+Shift+e"):
+            self.assertIn("bindsym %s " % binding, sway)
+        self.assertIn("bind = $mod, F1,", (files / "hyprland.conf").read_text())
