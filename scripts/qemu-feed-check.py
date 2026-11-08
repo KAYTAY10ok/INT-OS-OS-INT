@@ -40,6 +40,12 @@ MARKERS = (
     "INT_FEED_SHUTDOWN",
 )
 CASE_MARKERS = {
+    "stale-rpm-checksum": (
+        "INT_FEED_CHECK:pin:PASS", "INT_FEED_CHECK:install-v1:PASS",
+        "INT_FEED_CHECK:stale-metadata:PASS", "INT_FEED_CHECK:stale-fixture:PASS",
+        "INT_FEED_CHECK:stale-dnf-rejected:PASS", "INT_FEED_CHECK:unchanged-v1:PASS",
+        "INT_FEED_CASE:stale-rpm-checksum:PASS", "INT_FEED_SHUTDOWN",
+    ),
     "success": MARKERS,
     "unsigned-rpm": (
         "INT_FEED_CHECK:pin:PASS",

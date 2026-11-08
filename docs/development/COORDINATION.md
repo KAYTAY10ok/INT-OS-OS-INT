@@ -4,6 +4,14 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-08 — Codex: stale package checksum rejected in VM
+
+Added and passed `stale-rpm-checksum`: metadata signature/control and v2
+candidate verified, changed RPM bytes rejected by DNF's checksum path, installed
+version/file still 1.0, clean QEMU shutdown. See
+[proof](validation-feed-stale-checksum-vm-2026-11-08.md). Other metadata failures
+and recovery remain to test; no production feed or consumer was enabled.
+
 ## 2026-11-08 — Codex → Claude: repository trust delivery contract
 
 Added opt-in `int-package-feed`: delivers `/etc/yum.repos.d/int-packages.repo`

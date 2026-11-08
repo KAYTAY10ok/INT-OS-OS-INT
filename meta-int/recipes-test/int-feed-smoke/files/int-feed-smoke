@@ -77,6 +77,16 @@ gpgcheck=1
 repo_gpgcheck=1
 skip_if_unavailable=0
 EOF
+cat > "$work/repos/intfeed-stale.repo" <<EOF
+[intfeed-stale]
+name=INT disposable stale package checksum feed
+baseurl=file://$work/mount/stale-rpm-checksum
+enabled=0
+gpgkey=file://$work/trusted.asc
+gpgcheck=1
+repo_gpgcheck=1
+skip_if_unavailable=0
+EOF
 test "$(cat /sys/block/vdb/ro)" = 1
 mount -t ext4 -o ro,nosuid,nodev,noexec /dev/vdb "$work/mount"
 key="$work/mount/trusted-public-key.asc"
@@ -220,6 +230,47 @@ if test "$test_case" = wrong-key-rpm; then
     check_version 1.0
     echo 'INT_FEED_CHECK:unchanged-v1:PASS'
     echo 'INT_FEED_CASE:wrong-key-rpm:PASS'
+    result=PASS
+    exit 0
+fi
+if test "$test_case" = stale-rpm-checksum; then
+    # This repository has authentic metadata but package bytes changed after
+    # indexing. A fresh cache ensures DNF cannot reuse the valid counterpart.
+    dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-stale --refresh makecache
+    candidate=$(dnf -q -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-stale \
+        repoquery --available --qf '%{name} %{version} %{release}' int-feed-probe)
+    test "$candidate" = 'int-feed-probe 2.0 r0'
+    echo 'INT_FEED_CHECK:stale-metadata:PASS'
+    stale="$work/mount/stale-rpm-checksum"
+    valid="$work/mount/valid-v2"
+    gpg --batch --no-options --homedir "$work/home" --import "$work/trusted.asc" > "$work/gpg-import.log" 2>&1
+    gpg --batch --no-options --homedir "$work/home" --status-fd 1 --verify \
+        "$stale/repodata/repomd.xml.asc" "$stale/repodata/repomd.xml" > "$work/stale-signature.log" 2>&1
+    cat "$work/stale-signature.log"
+    grep -Fq "[GNUPG:] VALIDSIG $fingerprint " "$work/stale-signature.log"
+    # The signed index was copied from valid-v2, while only RPM bytes changed.
+    cmp "$valid/repodata/repomd.xml" "$stale/repodata/repomd.xml"
+    package=int-feed-probe-2.0-r0.noarch.rpm
+    test -s "$stale/$package"
+    good_hash=$(sha256sum "$valid/$package"); good_hash=${good_hash%% *}
+    bad_hash=$(sha256sum "$stale/$package"); bad_hash=${bad_hash%% *}
+    test "$good_hash" != "$bad_hash"
+    echo 'INT_FEED_CHECK:stale-fixture:PASS'
+    if dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-stale \
+        upgrade int-feed-probe > "$work/stale-dnf.log" 2>&1; then
+        echo 'DNF unexpectedly accepted a mismatching package checksum' >&2
+        exit 1
+    else
+        dnf_status=$?
+    fi
+    cat "$work/stale-dnf.log"
+    test "$dnf_status" -ne 0
+    grep -Fq 'Package "int-feed-probe-2.0-r0.noarch" from local repository "intfeed-stale" has incorrect checksum' "$work/stale-dnf.log"
+    grep -Fq 'Some packages from local repository have incorrect checksum' "$work/stale-dnf.log"
+    echo 'INT_FEED_CHECK:stale-dnf-rejected:PASS'
+    check_version 1.0
+    echo 'INT_FEED_CHECK:unchanged-v1:PASS'
+    echo 'INT_FEED_CASE:stale-rpm-checksum:PASS'
     result=PASS
     exit 0
 fi

@@ -159,6 +159,15 @@ class FeedProtocolTests(unittest.TestCase):
                                               'corrupt-rpm-indexed')['passed'])
         self.assertFalse(feed.analyze_log(serial, process, 'success')['passed'])
 
+    def test_stale_package_case_requires_checksum_stage_and_installed_state(self):
+        markers = feed.CASE_MARKERS['stale-rpm-checksum']
+        serial = '\n'.join((*markers, 'reboot: Power down'))
+        self.assertTrue(feed.analyze_log(serial, {'returncode': 0}, 'stale-rpm-checksum')['passed'])
+        for marker in markers:
+            self.assertFalse(feed.analyze_log(serial.replace(marker, ''), {'returncode': 0},
+                                              'stale-rpm-checksum')['passed'])
+        self.assertFalse(feed.analyze_log(serial, {'returncode': 0}, 'success')['passed'])
+
     def test_detects_input_or_snapshot_changes(self):
         with tempfile.TemporaryDirectory() as tmp:
             source, copy = Path(tmp) / 'src', Path(tmp) / 'copy'
