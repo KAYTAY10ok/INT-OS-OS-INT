@@ -13,7 +13,9 @@ A further run rejected signed metadata modified after signing; see
 [the altered-metadata record](validation-feed-altered-repomd-vm-2026-11-06.md).
 
 The runner accepts `success`, `unsigned-rpm`, `wrong-key-rpm`,
-`missing-metadata-signature` and `altered-repomd`. All require the supplied
+`missing-metadata-signature`, `altered-repomd`, `corrupt-rpm-indexed`,
+`stale-rpm-checksum`, `altered-primary`, `wrong-key-metadata` and
+`empty-rpm-trust`. All require the supplied
 full test-key fingerprint, installation of version 1.0, exact ordered markers,
 a kernel poweroff message, QEMU exit status zero, and unchanged input and
 snapshot hashes. The success case updates to 2.0 and repeats the update. The
@@ -75,3 +77,7 @@ see [VM evidence](validation-feed-primary-vm-2026-11-08.md).
 
 The `wrong-key-metadata` case verifies rejection of an untrusted metadata
 signer; see [VM evidence](validation-feed-unknown-metadata-vm-2026-11-08.md).
+
+The `empty-rpm-trust` case isolates an empty RPM database, requires missing-key
+rejection, imports only the pinned key and requires signature acceptance for
+the same artifact; see [VM evidence](validation-feed-empty-trust-vm-2026-11-08.md).

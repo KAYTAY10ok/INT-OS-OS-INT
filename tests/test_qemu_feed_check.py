@@ -21,6 +21,16 @@ class FeedProtocolTests(unittest.TestCase):
     def analyze(self, lines, process=None):
         return feed.analyze_log('\r\n'.join(lines) + '\r\n', process or self.process)
 
+    def test_empty_trust_protocol_requires_rejection_then_acceptance(self):
+        lines = list(feed.CASE_MARKERS['empty-rpm-trust']) + ['[ 123.4] reboot: Power down']
+        self.assertTrue(feed.analyze_log('\n'.join(lines), self.process, 'empty-rpm-trust')['passed'])
+        for index in range(len(lines)):
+            with self.subTest(missing=lines[index]):
+                self.assertFalse(feed.analyze_log('\n'.join(lines[:index] + lines[index+1:]),
+                                                 self.process, 'empty-rpm-trust')['passed'])
+        lines[3], lines[4] = lines[4], lines[3]
+        self.assertFalse(feed.analyze_log('\n'.join(lines), self.process, 'empty-rpm-trust')['passed'])
+
     def test_complete_ordered_protocol_passes(self):
         self.assertTrue(self.analyze(self.lines)['passed'])
 

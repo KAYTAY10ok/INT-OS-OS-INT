@@ -65,6 +65,10 @@ unchanged. The fixture disk and signing keys are disposable.
 | missing-metadata-signature | [Missing signature](validation-feed-missing-signature-vm-2026-11-06.md) |
 | altered-repomd | [Modified signed metadata](validation-feed-altered-repomd-vm-2026-11-06.md) |
 
+A separate [empty-trust guest control](validation-feed-empty-trust-vm-2026-11-08.md)
+rejects the same valid artifact before importing the pinned key and accepts it
+afterward in an isolated RPM database, without changing the installed v1.
+
 The [opt-in trust package](package-feed-client.md) defines how a real address
 and public key can enter an image. Release signing custody, hosting, HTTPS
 acceptance, revocation/rotation, freshness and interruption recovery remain

@@ -50,6 +50,11 @@ class GuestInputTests(unittest.TestCase):
                 self.assertNotEqual(self.run_helper('int-feed-args', cmdline).returncode, 0)
         self.assertNotEqual(self.run_helper('int-feed-args', command, '--unknown').returncode, 0)
 
+    def test_empty_trust_case_is_explicit(self):
+        command = f'int_feed_case=empty-rpm-trust int_feed_fingerprint={FINGERPRINT}'
+        self.assertEqual(self.run_helper('int-feed-args', command, '--case').stdout,
+                         'empty-rpm-trust\n')
+
     def test_primary_key_must_match_and_remain_valid(self):
         def check(listing, expected=FINGERPRINT, now='1700000001'):
             return self.run_helper('int-feed-keycheck', listing, expected, now).returncode

@@ -4,6 +4,14 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-08 — Codex: empty RPM trust control passed in VM
+
+`empty-rpm-trust` passed: isolated empty RPM database, NOKEY refusal of a
+correctly signed artifact, then accepted signature after importing only the
+pinned public key. Installed probe remains v1; see
+[proof](validation-feed-empty-trust-vm-2026-11-08.md). DNF automatic key import
+is deliberately outside this isolated RPM control. No consumer files changed.
+
 ## 2026-11-08 — Codex: unknown metadata signer rejected in VM
 
 `wrong-key-metadata` passed with a positive signature control, NO_PUBKEY,

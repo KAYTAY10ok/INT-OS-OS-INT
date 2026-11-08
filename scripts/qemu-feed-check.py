@@ -40,6 +40,12 @@ MARKERS = (
     "INT_FEED_SHUTDOWN",
 )
 CASE_MARKERS = {
+    "empty-rpm-trust": (
+        "INT_FEED_CHECK:pin:PASS", "INT_FEED_CHECK:install-v1:PASS",
+        "INT_FEED_CHECK:empty-rpm-db:PASS", "INT_FEED_CHECK:empty-rpm-rejected:PASS",
+        "INT_FEED_CHECK:imported-rpm-accepted:PASS", "INT_FEED_CHECK:unchanged-v1:PASS",
+        "INT_FEED_CASE:empty-rpm-trust:PASS", "INT_FEED_SHUTDOWN",
+    ),
     "altered-primary": (
         "INT_FEED_CHECK:pin:PASS", "INT_FEED_CHECK:install-v1:PASS",
         "INT_FEED_CHECK:primary-metadata:PASS", "INT_FEED_CHECK:primary-fixture:PASS",

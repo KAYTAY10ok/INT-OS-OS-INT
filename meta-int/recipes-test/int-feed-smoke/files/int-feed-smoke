@@ -161,6 +161,45 @@ dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-v1 --refresh make
 dnf -c "$work/dnf.conf" --disablerepo='*' --enablerepo=intfeed-v1 install int-feed-probe-1.0
 check_version 1.0
 echo 'INT_FEED_CHECK:install-v1:PASS'
+if test "$test_case" = empty-rpm-trust; then
+    # Isolate the RPM trust database from both installed packages and DNF's
+    # automatic import of the configured local key. Use the exact same signed
+    # artifact before and after importing only the independently pinned key.
+    db="$work/empty-rpm-db"
+    mkdir -m 0700 "$db"
+    rpm --dbpath "$db" --initdb
+    test -z "$(rpm --dbpath "$db" -qa)"
+    echo 'INT_FEED_CHECK:empty-rpm-db:PASS'
+    package="$work/mount/valid-v2/int-feed-probe-2.0-r0.noarch.rpm"
+    if rpmkeys --dbpath "$db" --define '_pkgverify_level all' --checksig --verbose \
+        "$package" > "$work/empty-rpmkeys.log" 2>&1; then
+        echo 'Signed package unexpectedly trusted by an empty RPM database' >&2
+        exit 1
+    fi
+    cat "$work/empty-rpmkeys.log"
+    grep -Eiq 'signature.*:[[:space:]]*NOKEY[[:space:]]*$' "$work/empty-rpmkeys.log"
+    grep -Eiq 'digest.*:[[:space:]]*OK[[:space:]]*$' "$work/empty-rpmkeys.log"
+    if grep -Eiq 'signature.*:[[:space:]]*OK[[:space:]]*$' "$work/empty-rpmkeys.log"; then
+        exit 1
+    fi
+    echo 'INT_FEED_CHECK:empty-rpm-rejected:PASS'
+    rpmkeys --dbpath "$db" --import "$work/trusted.asc"
+    test "$(rpm --dbpath "$db" -qa --qf '%{NAME}\n')" = gpg-pubkey
+    rpmkeys --dbpath "$db" --define '_pkgverify_level all' --checksig --verbose \
+        "$package" > "$work/imported-rpmkeys.log" 2>&1
+    cat "$work/imported-rpmkeys.log"
+    grep -Eiq 'signature.*:[[:space:]]*OK[[:space:]]*$' "$work/imported-rpmkeys.log"
+    grep -Eiq 'digest.*:[[:space:]]*OK[[:space:]]*$' "$work/imported-rpmkeys.log"
+    if grep -Eiq '(NOKEY|NOTFOUND|BAD|NOT OK|without OpenPGP)' "$work/imported-rpmkeys.log"; then
+        exit 1
+    fi
+    echo 'INT_FEED_CHECK:imported-rpm-accepted:PASS'
+    check_version 1.0
+    echo 'INT_FEED_CHECK:unchanged-v1:PASS'
+    echo 'INT_FEED_CASE:empty-rpm-trust:PASS'
+    result=PASS
+    exit 0
+fi
 if test "$test_case" = unsigned-rpm; then
     # Validate the signed metadata and make sure it advertises exactly the
     # intended version before trying a transaction. A missing package, stale
