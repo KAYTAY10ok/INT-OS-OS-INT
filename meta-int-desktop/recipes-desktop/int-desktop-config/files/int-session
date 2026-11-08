@@ -1,5 +1,6 @@
 #!/bin/sh
 # int-session sway|hyprland|current: choose the desktop engine for your next start.
+# int-session autostart on|off: start the desktop after login on tty1 (installed systems).
 set -eu
 dir=${XDG_CONFIG_HOME:-$HOME/.config}/int
 case "${1:-current}" in
@@ -9,6 +10,12 @@ case "${1:-current}" in
         fi
         mkdir -p "$dir"; printf '%s\n' "$1" > "$dir/session"
         echo "Next desktop start: $1 (log out, then run start-int-desktop)" ;;
+    autostart)
+        case "${2:-}" in
+            on) rm -f "$dir/no-autostart"; echo "The desktop starts after login on tty1." ;;
+            off) mkdir -p "$dir"; : > "$dir/no-autostart"; echo "The desktop no longer starts by itself: run start-int-desktop." ;;
+            *) echo "usage: int-session autostart on|off" >&2; exit 2 ;;
+        esac ;;
     current) cat "$dir/session" 2>/dev/null || echo "automatic (Hyprland for OS-INT if installed, else Sway)" ;;
-    *) echo "usage: int-session sway|hyprland|current" >&2; exit 2 ;;
+    *) echo "usage: int-session sway|hyprland|current|autostart on|off" >&2; exit 2 ;;
 esac

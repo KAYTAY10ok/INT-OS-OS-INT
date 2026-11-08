@@ -226,3 +226,27 @@ class AppsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AutostartTest(unittest.TestCase):
+    SESSION = ROOT / "meta-int-desktop/recipes-desktop/int-desktop-config/files/int-session"
+    PROFILE = ROOT / "meta-int-desktop/recipes-desktop/int-desktop-config/files/int-autostart.sh"
+
+    def test_autostart_toggle_and_guards(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"HOME": tmp, "PATH": "/usr/bin:/bin"}
+            off = subprocess.run(["/bin/sh", str(self.SESSION), "autostart", "off"], env=env, capture_output=True, text=True)
+            self.assertEqual(off.returncode, 0, off.stderr)
+            self.assertTrue((Path(tmp) / ".config/int/no-autostart").exists())
+            subprocess.run(["/bin/sh", str(self.SESSION), "autostart", "on"], env=env, check=True, capture_output=True)
+            self.assertFalse((Path(tmp) / ".config/int/no-autostart").exists())
+            self.assertEqual(subprocess.run(["/bin/sh", str(self.SESSION), "autostart", "maybe"], env=env,
+                                            capture_output=True).returncode, 2)
+        text = self.PROFILE.read_text()
+        for guard in ("/dev/tty1", "/etc/int/install.conf", "WAYLAND_DISPLAY", "no-autostart", "INT_AUTOSTARTED"):
+            self.assertIn(guard, text)
+        self.assertNotIn("exec start-int-desktop", text)  # a failure must leave a usable console
+        # Sourced by a non-interactive shell: does nothing.
+        result = subprocess.run(["/bin/sh", "-c", ". %s; echo alive" % self.PROFILE], capture_output=True, text=True,
+                                env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent"})
+        self.assertEqual(result.stdout.strip(), "alive")
