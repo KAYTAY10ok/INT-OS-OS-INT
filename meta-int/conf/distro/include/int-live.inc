@@ -21,5 +21,5 @@ PACKAGECONFIG:pn-hyprgraphics = ""
 # Sound (meta-multimedia): PipeWire with ALSA and WirePlumber, started by the
 # systemd user manager (int-audio). Only what a desktop needs: no camera,
 # GStreamer, JACK, Bluetooth or network audio.
-PACKAGECONFIG:pn-pipewire = "systemd systemd-user-service alsa pipewire-alsa udev pw-cat wireplumber"
+PACKAGECONFIG:class-target:pn-pipewire = "systemd systemd-user-service alsa pipewire-alsa udev pw-cat wireplumber"
 PACKAGECONFIG:pn-wireplumber = "dbus systemd systemd-user-service"
