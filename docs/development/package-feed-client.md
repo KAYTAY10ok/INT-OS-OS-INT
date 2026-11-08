@@ -76,3 +76,10 @@ specified HTTPS URL, enabled gpgcheck/repo_gpgcheck/sslverify and the local
 public key path. The package was not installed in a guest or production
 image. The tests exercise configuration injection rejection and key-listing
 identity/validity; they do not qualify a real HTTPS package service.
+
+A follow-up build also passed after rejecting GnuPG's disabled-key capability
+flag (`D`), in addition to disabled validity records: 3,269 tasks, 3,252
+already satisfied. Log `/workspace/int-linux-work/feed-client-disabled-key-build.log`
+SHA-256 `b1c6021d1bcc7e3eace0d4ab34096ee74881e7d4ffd0162f7cbcf110736b9268`.
+The valid-key output RPM hash above is unchanged; the added rejection path
+is covered by the key-listing test.

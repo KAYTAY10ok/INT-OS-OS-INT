@@ -32,7 +32,7 @@ def validate_key_listing(listing, fingerprint, now):
         if kind in ("sec", "ssb"):
             raise ValueError("Private key material is forbidden")
         if kind in ("pub", "sub"):
-            if len(fields) < 12 or fields[1] in ("r", "e", "d", "i"):
+            if len(fields) < 12 or fields[1] in ("r", "e", "d", "i") or "D" in fields[11]:
                 raise ValueError("Invalid, revoked, disabled or expired key")
             if not fields[5].isdigit() or int(fields[5]) > now:
                 raise ValueError("Invalid key creation time")

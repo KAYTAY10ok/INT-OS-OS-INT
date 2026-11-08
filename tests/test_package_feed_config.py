@@ -34,7 +34,7 @@ class FeedConfigTests(unittest.TestCase):
     def test_key_identity_and_validity(self):
         helper.validate_key_listing(LISTING, PIN, NOW)
         for listing in ('', LISTING + LISTING, LISTING.replace(PIN, 'B'*40),
-                        LISTING.replace('pub:-:', 'pub:r:'), LISTING.replace('scSC', 'cC'),
+                        LISTING.replace('pub:-:', 'pub:r:'), LISTING.replace('scSC', 'cC'), LISTING.replace('scSC', 'scSCD'),
                         LISTING.replace('1900000000', '1750000000'),
                         LISTING.replace('1700000000', '1850000000'),
                         LISTING + 'sec:-:3072:1:1234:1700000000:1900000000:::::scSC:\n'):
