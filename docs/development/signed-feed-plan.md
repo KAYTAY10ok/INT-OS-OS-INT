@@ -192,7 +192,8 @@ does not validate every variant of the illustrative commands above.
 
 `scripts/feed-check.py` now implements this interface; see
 [feed-check.md](feed-check.md) for its checks, host-rehearsal results with
-Ubuntu tools and limits. It has not yet been run with OE native tools.
+Ubuntu tools and limits. Its ten-case regression now passes with OE native tools; see
+[native audit validation](validation-feed-audit-native-2026-11-08.md).
 
 The narrow interface for `scripts/feed-check.py` is:
 

@@ -101,9 +101,12 @@ expired key, a shortened fingerprint, an extra unindexed RPM and a symlink in
 the feed; an unmodified copy of `valid-v2` passed. No GnuPG agent, keyboxd or
 dirmngr process remained afterwards.
 
-This is **not OE native evidence**. The helper has not yet been run with the
-OE-built Sequoia-backed `rpmkeys` 4.20 or OE's GnuPG, whose output may differ
-and will then fail closed until the grammar is reviewed.
+**OE native validation (2026-11-08).** The dedicated opt-in BitBake task
+`audit_feed_fixtures` has now passed all ten cases with OE-built RPM 4.20.1,
+GnuPG 2.5.17 and Python 3.14.7, without changing the auditor grammar. Both
+valid feeds passed the trusted/empty RPM database controls; the eight invalid
+variants failed at their expected verification stages. See
+[the native evidence and repeat procedure](validation-feed-audit-native-2026-11-08.md).
 
 ## Limits
 

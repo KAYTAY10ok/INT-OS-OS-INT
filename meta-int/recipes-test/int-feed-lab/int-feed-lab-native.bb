@@ -1,7 +1,8 @@
 SUMMARY = "Isolated RPM and repository signature laboratory"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
-SRC_URI = "file://int-feed-lab.py file://int-feed-fixtures.py"
+FILESEXTRAPATHS:prepend := "${THISDIR}/../../../scripts:"
+SRC_URI = "file://int-feed-lab.py file://int-feed-fixtures.py file://int-feed-audit-matrix.py file://feed-check.py"
 S = "${UNPACKDIR}"
 
 inherit native python3native
@@ -35,3 +36,15 @@ do_create_feed_fixtures() {
     ${PYTHON} ${S}/int-feed-fixtures.py --bindir ${STAGING_BINDIR_NATIVE}
 }
 addtask create_feed_fixtures after do_unpack do_prepare_recipe_sysroot
+
+# Explicit regression task against already-generated public fixtures. No key
+# generation/signing occurs; the auditor gets only the public key and pin.
+export INT_FEED_AUDIT_FIXTURES
+export INT_FEED_AUDIT_FINGERPRINT
+export INT_FEED_AUDIT_OUTPUT
+do_audit_feed_fixtures[nostamp] = "1"
+do_audit_feed_fixtures() {
+    ${PYTHON} ${S}/int-feed-audit-matrix.py --bindir ${STAGING_BINDIR_NATIVE} > ${T}/feed-audit-output.txt
+    bbplain "$(cat ${T}/feed-audit-output.txt)"
+}
+addtask audit_feed_fixtures after do_unpack do_prepare_recipe_sysroot

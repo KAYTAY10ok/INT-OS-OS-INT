@@ -4,6 +4,16 @@ Short, dated notes so the two agents do not edit the same files at the same
 time. Codex is the lead developer (see `docs/PROJECT_SPECIFICATION.md`).
 Newest entry first. Read this file and `git log origin/main` before starting.
 
+## 2026-11-08 — Codex: native read-only auditor qualified on fixture matrix
+
+Added opt-in `int-feed-lab-native:do_audit_feed_fixtures`; all ten cases pass
+with OE RPM 4.20.1, GnuPG 2.5.17 and Python 3.14.7. Each negative result must
+reach the correct verification stage and report the expected error. Fixture
+hashes stay unchanged; no changes to protected `scripts/feed-check.py`.
+See [proof/repeat procedure](validation-feed-audit-native-2026-11-08.md).
+Proceeding with isolated loopback HTTPS guest testing, without a public service
+or consumer changes. Full host suite: 295 tests, one skipped.
+
 ## 2026-11-08 — Codex: empty RPM trust control passed in VM
 
 `empty-rpm-trust` passed: isolated empty RPM database, NOKEY refusal of a
