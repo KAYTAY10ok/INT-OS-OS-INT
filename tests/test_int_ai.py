@@ -45,11 +45,12 @@ class RegistryTest(unittest.TestCase):
     def test_registry_names_and_policies(self):
         self.assertEqual(set(ai.REGISTRY), {
             "theme.set", "theme.list", "theme.current", "system.status", "files.create", "files.list",
-            "security.check", "packages.install", "dashboard.show", "none"})
+            "security.check", "packages.install", "dashboard.show", "apps.list", "apps.add", "apps.remove",
+            "none"})
         auto = {n for n, (_s, p, _d) in ai.REGISTRY.items() if p == ai.AUTO}
         self.assertEqual(auto, {"theme.set", "theme.list", "theme.current", "system.status", "files.list",
-                                "dashboard.show", "none"})
-        for name in ("files.create", "packages.install", "security.check"):
+                                "dashboard.show", "apps.list", "none"})
+        for name in ("files.create", "packages.install", "security.check", "apps.add", "apps.remove"):
             self.assertEqual(ai.REGISTRY[name][1], ai.CONFIRM)
 
     def test_schema_is_strict(self):

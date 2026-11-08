@@ -1,0 +1,10 @@
+# Privacy and anonymity tools. Included on the ISO. cryptsetup stays in the
+# base system (disk encryption) and is never removed with this preset.
+title_fr=Opsec / vie privée
+title_en=Opsec / privacy
+summary_fr=Tor, macchanger, WireGuard, OpenVPN, exiftool, GnuPG
+summary_en=Tor, macchanger, WireGuard, OpenVPN, exiftool, GnuPG
+source=media
+default=os-int
+packages=tor macchanger wireguard-tools openvpn exiftool gnupg
+meta=packagegroup-int-osint

@@ -1,0 +1,327 @@
+#!/usr/bin/env python3
+"""int-apps: application presets for INT Linux.
+
+    int-apps list                       presets and their state
+    int-apps add NAME... [--yes]        install a preset's packages
+    int-apps remove NAME... [--yes]     remove a preset's packages
+    int-apps choose [--yes]             pick presets interactively
+    int-apps firstrun                   'choose' once, on an installed system
+
+Presets come from /usr/share/int/apps/*.preset. "media" presets ship on the
+ISO and are installed with the system: choosing them keeps them, leaving them
+out removes them (offline, with rpm). "feed" presets need the INT package
+feed; while no feed is configured nothing is installed and int-apps says so.
+Package names only ever come from the preset files and run as fixed argv
+lists; every change is shown and confirmed first (sudo asks for the password).
+"""
+import os
+import re
+import subprocess
+import sys
+
+SHARE = os.environ.get("INT_APPS_SHARE", "/usr/share/int/apps")
+INSTALL_CONF = os.environ.get("INT_INSTALL_CONF", "/etc/int/install.conf")
+RPM_DB = os.environ.get("INT_RPM_DB", "/var/lib/rpm")
+REPOS_DIR = os.environ.get("INT_REPOS_DIR", "/etc/yum.repos.d")
+NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
+PACKAGE_RE = re.compile(r"^[a-z0-9][a-z0-9+._-]{0,99}$")
+EDITIONS = ("int-os", "os-int")
+# Never removed by a preset: the base system and disk encryption need them.
+PROTECTED = frozenset(("cryptsetup", "python3", "python3-core", "sudo", "rpm", "dnf", "bash", "busybox",
+                       "sway", "sway-1.11", "foot", "fuzzel", "int-ai", "int-theme", "int-apps"))
+OK, FAILED, USAGE, UNAVAILABLE, NOT_CONFIRMED = 0, 1, 2, 4, 3
+
+
+class PresetError(Exception):
+    pass
+
+
+def install_conf():
+    values = {}
+    try:
+        with open(INSTALL_CONF, encoding="utf-8") as stream:
+            for line in stream:
+                key, sep, value = line.strip().partition("=")
+                if sep:
+                    values[key] = value
+    except OSError:
+        pass
+    return values
+
+
+def french():
+    lang = install_conf().get("INT_LANGUAGE", "") or os.environ.get("LANG", "")
+    return lang.startswith("fr")
+
+
+def t(fr, en):
+    return fr if french() else en
+
+
+def edition():
+    value = install_conf().get("INT_EDITION", "")
+    return value if value in EDITIONS else "int-os"
+
+
+def parse_preset(name, text):
+    data = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, sep, value = line.partition("=")
+        if not sep:
+            raise PresetError("%s: bad line %r" % (name, line))
+        data[key.strip()] = value.strip()
+    for key in ("title_fr", "title_en", "summary_fr", "summary_en", "source", "packages"):
+        if not data.get(key):
+            raise PresetError("%s: missing %s" % (name, key))
+    if data["source"] not in ("media", "feed"):
+        raise PresetError("%s: source must be media or feed" % name)
+    packages = data["packages"].split()
+    meta = data.get("meta", "").split()
+    for pkg in packages + meta:
+        if not PACKAGE_RE.match(pkg):
+            raise PresetError("%s: bad package name %r" % (name, pkg))
+    defaults = data.get("default", "").split()
+    for ed in defaults:
+        if ed not in EDITIONS:
+            raise PresetError("%s: unknown edition %r" % (name, ed))
+    return {"name": name, "title": (data["title_fr"], data["title_en"]),
+            "summary": (data["summary_fr"], data["summary_en"]), "source": data["source"],
+            "packages": packages, "meta": meta, "default": defaults}
+
+
+def presets():
+    found = []
+    try:
+        files = sorted(f for f in os.listdir(SHARE) if f.endswith(".preset"))
+    except OSError:
+        return found
+    order = {"cyber": 0, "opsec": 1, "terminal": 2, "desktop-tools": 3}
+    for file in files:
+        name = file[:-len(".preset")]
+        if not NAME_RE.match(name):
+            continue
+        with open(os.path.join(SHARE, file), encoding="utf-8") as stream:
+            found.append(parse_preset(name, stream.read()))
+    return sorted(found, key=lambda p: (order.get(p["name"], 9), p["source"] != "media", p["name"]))
+
+
+def have_rpm_db():
+    return os.path.isdir(RPM_DB) and bool(os.listdir(RPM_DB))
+
+
+def installed(package):
+    result = subprocess.run(["rpm", "-q", "--quiet", "--", package], stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return result.returncode == 0
+
+
+def state(preset):
+    """'installed', 'partial' or 'absent' from the rpm database."""
+    have = [p for p in preset["packages"] if installed(p)]
+    if len(have) == len(preset["packages"]):
+        return "installed"
+    return "partial" if have else "absent"
+
+
+def feed_configured():
+    try:
+        names = [n for n in os.listdir(REPOS_DIR) if n.endswith(".repo")]
+    except OSError:
+        return False
+    for name in names:
+        try:
+            with open(os.path.join(REPOS_DIR, name), encoding="utf-8") as stream:
+                text = stream.read()
+        except OSError:
+            continue
+        if re.search(r"^\s*baseurl\s*=", text, re.M) and not re.search(r"^\s*enabled\s*=\s*0", text, re.M):
+            return True
+    return False
+
+
+def privileged(argv):
+    return argv if os.geteuid() == 0 else ["sudo", "--"] + argv
+
+
+def confirm(question, assume_yes):
+    if assume_yes:
+        return True
+    if not sys.stdin.isatty():
+        print(t("Confirmation impossible sans terminal : rien n'a été fait.",
+                "Cannot confirm without a terminal: nothing was done."), file=sys.stderr)
+        return False
+    sys.stdout.write(question + t(" [o/N] ", " [y/N] "))
+    sys.stdout.flush()
+    answer = sys.stdin.readline().strip().lower()
+    return answer in ("o", "oui", "y", "yes")
+
+
+def lookup(names, all_presets):
+    by_name = {p["name"]: p for p in all_presets}
+    unknown = [n for n in names if n not in by_name]
+    if unknown:
+        raise PresetError(t("preset inconnu : ", "unknown preset: ") + ", ".join(unknown))
+    return [by_name[n] for n in names]
+
+
+def plan(add, remove, all_presets):
+    """Packages to install and to remove. Shared packages of kept presets stay."""
+    keep = {p["name"] for p in all_presets if p["name"] not in {r["name"] for r in remove}}
+    kept_packages = set()
+    for p in all_presets:
+        if p["name"] in keep and (p in add or state(p) != "absent"):
+            kept_packages.update(p["packages"])
+    to_install = []
+    for p in add:
+        to_install += [pkg for pkg in p["packages"] if not installed(pkg) and pkg not in to_install]
+    to_remove = []
+    for p in remove:
+        for pkg in p["meta"] + p["packages"]:
+            if pkg in PROTECTED or pkg in kept_packages or pkg in to_remove:
+                continue
+            if installed(pkg):
+                to_remove.append(pkg)
+    return to_install, to_remove
+
+
+def apply(to_install, to_remove, assume_yes):
+    if not to_install and not to_remove:
+        print(t("Rien à changer.", "Nothing to change."))
+        return OK
+    if not have_rpm_db():
+        print(t("Ce système n'a pas de base de paquets (session live ?) : rien n'a été fait.",
+                "This system has no package database (live session?): nothing was done."), file=sys.stderr)
+        return UNAVAILABLE
+    if to_install and not feed_configured():
+        print(t("Le dépôt de paquets INT n'est pas encore configuré : impossible d'installer ",
+                "The INT package feed is not configured yet: cannot install ") + " ".join(to_install), file=sys.stderr)
+        if not to_remove:
+            return UNAVAILABLE
+        to_install = []
+    if to_remove:
+        print(t("À retirer : ", "To remove: ") + " ".join(to_remove))
+    if to_install:
+        print(t("À installer : ", "To install: ") + " ".join(to_install))
+    if not confirm(t("Appliquer ces changements ?", "Apply these changes?"), assume_yes):
+        print(t("Annulé : rien n'a été fait.", "Cancelled: nothing was done."))
+        return NOT_CONFIRMED
+    status = OK
+    if to_remove:
+        if subprocess.run(privileged(["rpm", "-e", "--"] + to_remove)).returncode != 0:
+            print(t("Le retrait a échoué (dépendances ?) : rien n'a été retiré.",
+                    "Removal failed (dependencies?): nothing was removed."), file=sys.stderr)
+            status = FAILED
+    if to_install:
+        if subprocess.run(privileged(["dnf", "install", "--assumeyes", "--"] + to_install)).returncode != 0:
+            print(t("L'installation a échoué.", "Installation failed."), file=sys.stderr)
+            status = FAILED
+    return status
+
+
+def cmd_list(all_presets):
+    db = have_rpm_db()
+    labels = {"installed": t("installé", "installed"), "partial": t("partiel", "partial"),
+              "absent": t("non installé", "not installed")}
+    for p in all_presets:
+        st = labels[state(p)] if db else t("inconnu", "unknown")
+        src = "ISO" if p["source"] == "media" else t("dépôt", "feed")
+        print("%-14s %-14s %-6s %s — %s" % (p["name"], st, src, t(*p["title"]), t(*p["summary"])))
+    return OK
+
+
+def choose(all_presets, assume_yes, answer=None):
+    ed = edition()
+    defaults = [p["name"] for p in all_presets if ed in p["default"]]
+    print()
+    print(t("Choisis tes groupes d'applications (modifiable plus tard avec int-apps) :",
+            "Choose your application groups (change them later with int-apps):"))
+    for i, p in enumerate(all_presets, 1):
+        mark = "x" if p["name"] in defaults else " "
+        extra = "" if p["source"] == "media" else t("  (dépôt INT requis)", "  (needs the INT feed)")
+        print("  %d) [%s] %s — %s%s" % (i, mark, t(*p["title"]), t(*p["summary"]), extra))
+    print(t("Numéros séparés par des espaces, Entrée = la sélection [x], 0 = aucun.",
+            "Numbers separated by spaces, Enter = the [x] selection, 0 = none."))
+    if answer is None:
+        sys.stdout.write("> ")
+        sys.stdout.flush()
+        answer = sys.stdin.readline()
+    answer = answer.strip()
+    if not answer:
+        chosen = set(defaults)
+    elif answer == "0":
+        chosen = set()
+    else:
+        chosen = set()
+        for token in answer.replace(",", " ").split():
+            if not token.isdigit() or not 1 <= int(token) <= len(all_presets):
+                print(t("Choix invalide : ", "Invalid choice: ") + token, file=sys.stderr)
+                return USAGE
+            chosen.add(all_presets[int(token) - 1]["name"])
+    add = [p for p in all_presets if p["name"] in chosen]
+    remove = [p for p in all_presets if p["name"] not in chosen and p["source"] == "media"]
+    if not have_rpm_db():
+        print(t("Pas de base de paquets ici (session live ?) : rien n'a été changé.",
+                "No package database here (live session?): nothing was changed."))
+        return OK
+    to_install, to_remove = plan(add, remove, all_presets)
+    return apply(to_install, to_remove, assume_yes)
+
+
+def marker():
+    home = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(home, "int", "apps-chosen")
+
+
+def save_marker(status):
+    path = marker()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as stream:
+        stream.write("%d\n" % status)
+
+
+def main(argv):
+    yes = "--yes" in argv
+    args = [a for a in argv if a != "--yes"]
+    if not args or args[0] in ("-h", "--help"):
+        print(__doc__.strip())
+        return OK if args else USAGE
+    try:
+        all_presets = presets()
+        cmd, names = args[0], args[1:]
+        if cmd == "list" and not names:
+            return cmd_list(all_presets)
+        if cmd in ("add", "remove") and names:
+            for n in names:
+                if not NAME_RE.match(n):
+                    raise PresetError(t("nom invalide : ", "invalid name: ") + n)
+            chosen = lookup(names, all_presets)
+            if cmd == "add":
+                return apply(*plan(chosen, [], all_presets), yes)
+            return apply(*plan([], chosen, all_presets), yes)
+        if cmd == "choose" and not names:
+            return choose(all_presets, yes)
+        if cmd == "firstrun" and not names:
+            # Only on an installed system, once, and only with a terminal.
+            if not os.path.isfile(INSTALL_CONF) or os.path.exists(marker()) or not sys.stdin.isatty():
+                return OK
+            status = choose(all_presets, False)
+            if status in (OK, UNAVAILABLE, NOT_CONFIRMED):
+                save_marker(status)
+                print(t("Tu pourras changer plus tard avec : int-apps choose",
+                        "You can change this later with: int-apps choose"))
+            return OK
+    except PresetError as exc:
+        print("int-apps: %s" % exc, file=sys.stderr)
+        return USAGE
+    print(__doc__.strip(), file=sys.stderr)
+    return USAGE
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except (BrokenPipeError, KeyboardInterrupt):
+        sys.exit(FAILED)

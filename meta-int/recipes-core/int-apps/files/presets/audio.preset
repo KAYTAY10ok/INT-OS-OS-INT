@@ -1,0 +1,7 @@
+title_fr=Audio
+title_en=Audio
+summary_fr=PipeWire et WirePlumber (dépôt INT requis)
+summary_en=PipeWire and WirePlumber (needs the INT feed)
+source=feed
+default=
+packages=pipewire wireplumber

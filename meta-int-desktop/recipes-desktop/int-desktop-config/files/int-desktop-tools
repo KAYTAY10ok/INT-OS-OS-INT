@@ -1,0 +1,49 @@
+#!/bin/sh
+# Helpers for the "desktop-tools" application preset (int-apps). Each one does
+# nothing when its tool was not chosen, so the shortcuts are always safe.
+#   int-desktop-tools screenshot [area]   PNG in ~/Images (and the clipboard)
+#   int-desktop-tools lock                lock the screen
+#   int-desktop-tools startup             notifications and idle lock
+#   int-desktop-tools brightness up|down
+set -u
+PATH=/usr/bin:/bin
+have() { command -v "$1" >/dev/null 2>&1; }
+case "${1:-}" in
+screenshot)
+    have grim || exit 0
+    dir=${XDG_PICTURES_DIR:-$HOME/Images}
+    mkdir -p "$dir" || exit 1
+    file=$dir/capture-$(date +%Y%m%d-%H%M%S).png
+    if [ "${2:-}" = area ]; then
+        have slurp || exit 0
+        geometry=$(slurp) || exit 0
+        grim -g "$geometry" "$file" || exit 1
+    else
+        grim "$file" || exit 1
+    fi
+    if have wl-copy; then wl-copy --type image/png < "$file"; fi
+    if have notify-send; then notify-send "INT" "$file"; fi
+    ;;
+lock)
+    have swaylock || exit 0
+    exec swaylock -f -c 0b1020
+    ;;
+startup)
+    if have mako; then mako & fi
+    if have swayidle && have swaylock; then
+        swayidle -w timeout 600 "$0 lock" before-sleep "$0 lock" &
+    fi
+    ;;
+brightness)
+    have brightnessctl || exit 0
+    case "${2:-}" in
+    up) exec brightnessctl -q set +5% ;;
+    down) exec brightnessctl -q set 5%- ;;
+    *) exit 2 ;;
+    esac
+    ;;
+*)
+    sed -n '2,8s/^# \{0,1\}//p' "$0" >&2
+    exit 2
+    ;;
+esac

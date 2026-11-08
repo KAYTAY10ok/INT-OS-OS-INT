@@ -1,0 +1,7 @@
+title_fr=Outils du bureau
+title_en=Desktop tools
+summary_fr=captures d'écran (grim, slurp), presse-papiers, notifications (mako), verrouillage (swaylock, swayidle), luminosité
+summary_en=screenshots (grim, slurp), clipboard, notifications (mako), screen lock (swaylock, swayidle), brightness
+source=media
+default=int-os os-int
+packages=grim slurp wl-clipboard mako swaylock swayidle brightnessctl

@@ -35,7 +35,19 @@ IMAGE_INSTALL:append = " \
     int-ai-setup \
     llama-cpp \
     procps \
+    int-apps \
+    ${INT_APP_PRESET_PACKAGES} \
 "
+# Packages of the "media" presets in int-apps (kept or removed at first start).
+# tests/test_int_apps.py checks this list against the preset files.
+INT_APP_PRESET_PACKAGES = " \
+    htop btop nano tmux zsh rsync unzip \
+    grim slurp wl-clipboard mako swaylock swayidle brightnessctl \
+    git make strace gdb \
+"
+# Keep the rpm database (and dnf) so int-apps can remove presets offline and
+# install feed presets once an INT feed is configured. No feed is configured.
+IMAGE_FEATURES += "package-management"
 # The installer creates a disk-sized partition; the live rootfs needs little slack.
 IMAGE_ROOTFS_EXTRA_SPACE = "65536"
 # The live rootfs is read-only (tmpfs overlay) and the installer creates its own

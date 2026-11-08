@@ -74,6 +74,11 @@ REGISTRY = {
     "security.check": (_obj(), CONFIRM, "read-only integrity check of critical paths"),
     "packages.install": (_obj({"name": {"type": "string", "pattern": PACKAGE_PATTERN}}, ["name"]),
                          CONFIRM, "install a package"),
+    "apps.list": (_obj(), AUTO, "list the application presets"),
+    "apps.add": (_obj({"name": {"type": "string", "pattern": NAME_PATTERN}}, ["name"]), CONFIRM,
+                 "install an application preset"),
+    "apps.remove": (_obj({"name": {"type": "string", "pattern": NAME_PATTERN}}, ["name"]), CONFIRM,
+                    "remove an application preset"),
     "none": (_obj(), AUTO, "request not understood: do nothing"),
 }
 
@@ -81,6 +86,8 @@ REGISTRY = {
 # Canonical theme names (the int-theme presets). The model may only choose one
 # of these; French or English synonyms from the offline rules map onto them.
 THEMES = ("dark", "light", "blue", "pink", "anime")
+# Application presets of int-apps (/usr/share/int/apps/*.preset).
+APP_PRESETS = ("cyber", "opsec", "terminal", "desktop-tools", "dev", "web", "audio", "multimedia")
 # Paths given by the model must be written relative to the home with "~/".
 MODEL_PATH_PATTERN = r"^~/[^\x00]{1,%d}$" % (MAX_PATH - 2)
 
@@ -90,6 +97,8 @@ def _model_args(name, args):
     props = dict(args.get("properties", {}))
     if name == "theme.set":
         props["name"] = {"type": "string", "enum": list(THEMES)}
+    if name in ("apps.add", "apps.remove"):
+        props["name"] = {"type": "string", "enum": list(APP_PRESETS)}
     for key in ("path",):
         if key in props:
             props[key] = {"type": "string", "pattern": MODEL_PATH_PATTERN, "maxLength": MAX_PATH}
@@ -351,7 +360,8 @@ SYSTEM_PROMPT = (
     "JSON action. Output only JSON, no text. Actions:\n"
     "theme.set{name} theme.list{} theme.current{} system.status{} files.list{path} "
     "files.create{path,content} (inside the user's home only) security.check{} packages.install{name} "
-    "dashboard.show{style}. Theme names: dark, light, blue, pink, anime (French rose=pink, bleu=blue, "
+    "dashboard.show{style} apps.list{} apps.add{name} apps.remove{name}. Application presets: cyber, "
+    "opsec, terminal, desktop-tools, dev, web (browser), audio, multimedia. Theme names: dark, light, blue, pink, anime (French rose=pink, bleu=blue, "
     "sombre=dark, clair=light). Paths always start with ~/ (the user's home), e.g. ~/Documents/notes.txt. "
     "There is no action to delete, move or modify files or the system: for such requests, and for "
     "anything that does not clearly match one action, output {\"action\":\"none\",\"args\":{}}.\n"
@@ -884,6 +894,21 @@ def execute(action, home=None):
         err(t("refusé : le dépôt de paquets INT n'existe pas encore, rien n'a été installé",
               "refused: the INT package feed does not exist yet, nothing was installed"))
         return UNAVAILABLE
+    if name == "apps.list":
+        return _external("int-apps", ["list"],
+                         "commande int-apps absente : les presets d'applications ne sont pas installés",
+                         "int-apps command missing: application presets are not installed")
+    if name in ("apps.add", "apps.remove"):
+        # Already confirmed here; int-apps still shows its plan and sudo asks
+        # for the password on this terminal, so it is not captured.
+        path = shutil.which("int-apps")
+        if not path:
+            err(t("commande int-apps absente : les presets d'applications ne sont pas installés",
+                  "int-apps command missing: application presets are not installed"))
+            return UNAVAILABLE
+        verb = "add" if name == "apps.add" else "remove"
+        code = subprocess.run([path, verb, args["name"], "--yes"], shell=False, check=False).returncode
+        return {0: OK, 4: UNAVAILABLE, 2: REFUSED}.get(code, FAILED)
     if name == "none":
         err(t("demande non comprise : rien n'a été fait", "request not understood: nothing was done"))
         return REFUSED

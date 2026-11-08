@@ -79,6 +79,14 @@ mode "resize" {
 }
 bindsym $mod+r mode "resize"
 
+# Desktop tools preset (int-apps add desktop-tools); harmless when absent.
+exec /usr/libexec/int-desktop-tools startup
+bindsym Print exec /usr/libexec/int-desktop-tools screenshot
+bindsym $mod+Print exec /usr/libexec/int-desktop-tools screenshot area
+bindsym $mod+Escape exec /usr/libexec/int-desktop-tools lock
+bindsym XF86MonBrightnessUp exec /usr/libexec/int-desktop-tools brightness up
+bindsym XF86MonBrightnessDown exec /usr/libexec/int-desktop-tools brightness down
+
 # Theme switch shortcut: Super+t opens the preset list in a terminal.
 bindsym $mod+t exec foot --app-id=int-terminal sh -c 'int-theme list; printf "\n> "; read n; int-theme set "$n"; sleep 2'
 

@@ -1,0 +1,7 @@
+title_fr=Outils terminal
+title_en=Terminal tools
+summary_fr=htop, btop, nano, tmux, zsh, rsync, unzip
+summary_en=htop, btop, nano, tmux, zsh, rsync, unzip
+source=media
+default=os-int
+packages=htop btop nano tmux zsh rsync unzip

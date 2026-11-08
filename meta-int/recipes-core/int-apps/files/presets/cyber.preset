@@ -1,0 +1,9 @@
+# Network analysis tools. Included on the ISO.
+title_fr=Cyber / réseau
+title_en=Cyber / network
+summary_fr=analyse réseau : nmap, tcpdump, tshark, socat, netcat, traceroute
+summary_en=network analysis: nmap, tcpdump, tshark, socat, netcat, traceroute
+source=media
+default=os-int
+packages=nmap tcpdump tshark socat netcat-openbsd traceroute
+meta=packagegroup-int-osint

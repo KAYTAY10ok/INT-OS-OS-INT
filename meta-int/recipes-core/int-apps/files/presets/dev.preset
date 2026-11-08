@@ -1,0 +1,7 @@
+title_fr=Développement
+title_en=Development
+summary_fr=git, make, strace, gdb
+summary_en=git, make, strace, gdb
+source=media
+default=
+packages=git make strace gdb

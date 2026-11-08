@@ -41,6 +41,8 @@ if [ ! -f "$config_home/int/theme/current" ] && [ -t 0 ]; then
     int-theme set "${name:-dark}" >/dev/null || fail 'Cannot apply the desktop theme.'
 fi
 int-theme ensure || fail 'Cannot prepare the desktop theme.'
+# First start on an installed system: pick the application groups (once).
+if command -v int-apps >/dev/null 2>&1; then int-apps firstrun || true; fi
 # Session engine: ~/.config/int/session (sway|hyprland), else Hyprland for
 # OS-INT when installed, else Sway. Change it with: int-session sway|hyprland
 engine=$(cat "$config_home/int/session" 2>/dev/null || true)
