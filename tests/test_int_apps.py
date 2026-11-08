@@ -217,6 +217,8 @@ class AppsTest(unittest.TestCase):
     def test_session_hooks(self):
         start = (ROOT / "meta-int-desktop/recipes-desktop/int-desktop-config/files/start-int-desktop").read_text()
         self.assertIn("int-apps firstrun", start)
+        self.assertIn("Moteur du bureau", start)  # engine asked once when Hyprland exists
+        self.assertLess(start.index("int-apps firstrun"), start.index("Moteur du bureau"))
         tools = ROOT / "meta-int-desktop/recipes-desktop/int-desktop-config/files/int-desktop-tools"
         result = subprocess.run(["/bin/sh", str(tools), "screenshot"], env={"PATH": "/nonexistent", "HOME": "/tmp"},
                                 capture_output=True, text=True, timeout=10)
