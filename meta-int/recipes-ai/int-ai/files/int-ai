@@ -75,6 +75,7 @@ REGISTRY = {
     "packages.install": (_obj({"name": {"type": "string", "pattern": PACKAGE_PATTERN}}, ["name"]),
                          CONFIRM, "install a package"),
     "apps.list": (_obj(), AUTO, "list the application presets"),
+    "wifi.status": (_obj(), AUTO, "Wi-Fi interface, network and address"),
     "apps.add": (_obj({"name": {"type": "string", "pattern": NAME_PATTERN}}, ["name"]), CONFIRM,
                  "install an application preset"),
     "apps.remove": (_obj({"name": {"type": "string", "pattern": NAME_PATTERN}}, ["name"]), CONFIRM,
@@ -360,6 +361,12 @@ def _r_apps_remove(m):
     return {"action": "apps.remove", "args": {"name": APP_WORDS[m["g"].lower()]}}
 
 
+@rule(r"(?:(?:l'?)?[ée]tat\s+du\s+wi-?fi|statut\s+(?:du\s+)?wi-?fi|wi-?fi\s+(?:status|state)|"
+      r"suis-je\s+connect[ée]e?(?:\s+au\s+wi-?fi)?|am\s+i\s+connected(?:\s+to\s+wi-?fi)?)")
+def _r_wifi_status(m):
+    return {"action": "wifi.status", "args": {}}
+
+
 # Move the preset rules ahead of the generic package and file rules.
 RULES[:] = RULES[_APP_RULES_START:] + RULES[:_APP_RULES_START]
 
@@ -398,7 +405,7 @@ SYSTEM_PROMPT = (
     "JSON action. Output only JSON, no text. Actions:\n"
     "theme.set{name} theme.list{} theme.current{} system.status{} files.list{path} "
     "files.create{path,content} (inside the user's home only) security.check{} packages.install{name} "
-    "dashboard.show{style} apps.list{} apps.add{name} apps.remove{name}. Application presets: cyber, "
+    "dashboard.show{style} apps.list{} apps.add{name} apps.remove{name} wifi.status{}. Application presets: cyber, "
     "opsec, terminal, desktop-tools, dev, web (browser), audio, multimedia. Theme names: dark, light, blue, pink, anime (French rose=pink, bleu=blue, "
     "sombre=dark, clair=light). Paths always start with ~/ (the user's home), e.g. ~/Documents/notes.txt. "
     "There is no action to delete, move or modify files or the system: for such requests, and for "
@@ -932,6 +939,9 @@ def execute(action, home=None):
         err(t("refusé : le dépôt de paquets INT n'existe pas encore, rien n'a été installé",
               "refused: the INT package feed does not exist yet, nothing was installed"))
         return UNAVAILABLE
+    if name == "wifi.status":
+        return _external("int-wifi", ["status"],
+                         "commande int-wifi absente", "int-wifi command missing")
     if name == "apps.list":
         return _external("int-apps", ["list"],
                          "commande int-apps absente : les presets d'applications ne sont pas installés",

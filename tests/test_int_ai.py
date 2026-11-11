@@ -46,10 +46,10 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(set(ai.REGISTRY), {
             "theme.set", "theme.list", "theme.current", "system.status", "files.create", "files.list",
             "security.check", "packages.install", "dashboard.show", "apps.list", "apps.add", "apps.remove",
-            "none"})
+            "wifi.status", "none"})
         auto = {n for n, (_s, p, _d) in ai.REGISTRY.items() if p == ai.AUTO}
         self.assertEqual(auto, {"theme.set", "theme.list", "theme.current", "system.status", "files.list",
-                                "dashboard.show", "apps.list", "none"})
+                                "dashboard.show", "apps.list", "wifi.status", "none"})
         for name in ("files.create", "packages.install", "security.check", "apps.add", "apps.remove"):
             self.assertEqual(ai.REGISTRY[name][1], ai.CONFIRM)
 
@@ -664,6 +664,8 @@ class AppPresetRulesTest(unittest.TestCase):
             "installe firefox": ("apps.add", {"name": "web"}),
             "ajoute le son": ("apps.add", {"name": "audio"}),
             "retire le groupe cyber": ("apps.remove", {"name": "cyber"}),
+            "état du wifi": ("wifi.status", {}),
+            "wifi status": ("wifi.status", {}),
             "installe nmap": ("packages.install", {"name": "nmap"}),
         }
         for text, (name, args) in cases.items():
