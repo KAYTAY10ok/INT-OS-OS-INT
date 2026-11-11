@@ -291,3 +291,39 @@ class HelpTest(unittest.TestCase):
         for binding in ("$mod+F1", "$mod+Escape", "$mod+d", "$mod+Return", "Print", "$mod+Shift+e"):
             self.assertIn("bindsym %s " % binding, sway)
         self.assertIn("bind = $mod, F1,", (files / "hyprland.conf").read_text())
+
+
+class RendererTest(unittest.TestCase):
+    SCRIPT = ROOT / "meta-int-desktop/recipes-desktop/int-desktop-config/files/int-renderer"
+
+    def run_for(self, driver, dri_files=()):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            drivers = root / "drivers" / driver
+            drivers.mkdir(parents=True)
+            card = root / "drm/card0/device"
+            card.mkdir(parents=True)
+            (card / "driver").symlink_to(drivers)
+            dri = root / "dri"
+            dri.mkdir()
+            for name in dri_files:
+                (dri / name).write_text("")
+            env = {"INT_DRM_SYS": str(root / "drm"), "INT_DRI_DIR": str(dri), "PATH": "/usr/bin:/bin"}
+            return subprocess.run(["/bin/sh", str(self.SCRIPT)], env=env, capture_output=True, text=True,
+                                  timeout=10).stdout.strip()
+
+    def test_cpu_renderer_only_when_the_mesa_driver_is_missing(self):
+        self.assertEqual(self.run_for("i915"), "pixman")
+        self.assertEqual(self.run_for("amdgpu"), "pixman")
+        self.assertEqual(self.run_for("i915", ["iris_dri.so"]), "")
+        self.assertEqual(self.run_for("amdgpu", ["radeonsi_dri.so"]), "")
+        self.assertEqual(self.run_for("virtio_gpu"), "")  # VMs keep the current path
+        self.assertEqual(self.run_for("bochs-drm"), "")
+
+    def test_gpu_build_option_keeps_intel_and_amd(self):
+        desktop = (ROOT / "meta-int-desktop/conf/distro/include/int-desktop.inc").read_text()
+        self.assertIn('INT_MESA_REMOVE ??= "intel amd nouveau svga libclc gallium-llvm"', desktop)
+        gpu = (ROOT / "meta-int/conf/distro/include/int-gpu.inc").read_text()
+        self.assertIn('INT_MESA_REMOVE = "nouveau svga"', gpu)
+        start = (ROOT / "meta-int-desktop/recipes-desktop/int-desktop-config/files/start-int-desktop").read_text()
+        self.assertIn("WLR_RENDERER=pixman", start)

@@ -71,6 +71,11 @@ if [ "$engine" = hyprland ] && command -v Hyprland >/dev/null 2>&1; then
     if [ ! -f "$config" ]; then config=/etc/int/hypr/hyprland.conf; fi
     exec dbus-run-session -- Hyprland --config "$config"
 fi
+# Without the Mesa driver for this GPU, use Sway's CPU renderer (pixman).
+if [ -z "${WLR_RENDERER:-}" ] && [ "$(/usr/libexec/int-renderer 2>/dev/null)" = pixman ]; then
+    WLR_RENDERER=pixman
+    export WLR_RENDERER
+fi
 config=$config_home/sway/config
 if [ ! -f "$config" ]; then config=/etc/int/sway/config; fi
 exec dbus-run-session -- sway --config "$config"

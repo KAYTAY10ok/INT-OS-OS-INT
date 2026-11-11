@@ -1,0 +1,22 @@
+#!/bin/sh
+# Print "pixman" when the PC has an Intel/AMD/NVIDIA GPU whose Mesa driver is
+# not installed: Sway then composites on the CPU with pixman, much faster than
+# Mesa's softpipe fallback. Print nothing otherwise (hardware GL, or a VM).
+SYS=${INT_DRM_SYS:-/sys/class/drm}
+DRI=${INT_DRI_DIR:-/usr/lib/dri}
+for link in "$SYS"/card[0-9]*/device/driver; do
+    [ -e "$link" ] || continue
+    drv=$(basename "$(readlink "$link")")
+    case "$drv" in
+        i915|xe) dri=iris ;;
+        amdgpu) dri=radeonsi ;;
+        radeon) dri=r600 ;;
+        nouveau) dri=nouveau ;;
+        *) continue ;;
+    esac
+    if [ ! -e "$DRI/${dri}_dri.so" ]; then
+        echo pixman
+        exit 0
+    fi
+done
+exit 0

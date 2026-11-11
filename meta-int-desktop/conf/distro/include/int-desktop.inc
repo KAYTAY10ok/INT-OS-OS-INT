@@ -12,7 +12,9 @@ PACKAGECONFIG:append:pn-wlroots-0.19 = " gbm"
 
 # QEMU prototype: Mesa keeps its supported EGL/GLES/GBM, Wayland, Gallium,
 # virtio/virgl and unconditional softpipe path. This does not qualify real GPUs.
-PACKAGECONFIG:remove:pn-mesa:qemux86-64 = "intel amd nouveau svga libclc gallium-llvm"
+# conf/distro/include/int-gpu.inc (opt-in, large build machine) narrows this.
+INT_MESA_REMOVE ??= "intel amd nouveau svga libclc gallium-llvm"
+PACKAGECONFIG:remove:pn-mesa:qemux86-64 = "${INT_MESA_REMOVE}"
 # The supported nanosvg backend avoids bringing librsvg/Rust into this prototype.
 PACKAGECONFIG:remove:pn-fuzzel = "librsvg"
 
