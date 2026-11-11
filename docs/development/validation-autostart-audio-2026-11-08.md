@@ -44,3 +44,14 @@ Live session, blue theme ([screenshot](evidence/audio-03-volume-bar-wifi.png)):
   They need a real keyboard.
 - `wpctl` prints RTKit warnings (no RTKit daemon, it needs polkit); PipeWire
   runs without realtime priority. Cosmetic; not fixed.
+
+## Live ISO from `bbe06a2` (pipewire-pulse, int-ai wifi.status) — 2026-11-11
+
+([screenshot](evidence/audio-04-pulse-wifi-ai.png))
+
+- `systemctl --user is-active pipewire-pulse.socket`: active; the PulseAudio
+  socket `$XDG_RUNTIME_DIR/pulse/native` exists, so PulseAudio clients
+  (Firefox, most desktop apps) can connect. No PulseAudio client was played.
+- `int-ai etat du wifi` maps offline to `wifi.status` (no confirmation) and
+  runs `int-wifi status`: "No Wi-Fi card found." (QEMU has no Wi-Fi card);
+  int-ai returns 1.

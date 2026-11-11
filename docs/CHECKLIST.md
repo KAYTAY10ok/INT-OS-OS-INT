@@ -66,7 +66,8 @@ et n'est publié nulle part. « Validé » = testé dans QEMU (PC UEFI virtuel),
 - [ ] Fonds d'écran anime sous licence libre (CC0/CC-BY, source notée) ou fournis par le propriétaire
 - [ ] Supprimer `themeExemple/` quand le propriétaire valide les thèmes
 - [x] Son PipeWire + WirePlumber (groupe « Audio », par défaut) — validé QEMU (carte Intel HDA virtuelle)
-- [ ] Son sur vrai PC, compatibilité PulseAudio (pipewire-pulse), touches de volume
+- [x] Compatibilité PulseAudio (pipewire-pulse) — socket actif en QEMU
+- [ ] Son sur vrai PC, touches de volume (non vérifiables en QEMU)
 - [ ] Accélération 3D ; aujourd'hui affichage logiciel seulement
 - [x] Bureau lancé automatiquement après connexion sur la 1re console d'un système installé (`int-session autostart off|on`) — validé QEMU
 - [x] Choix Sway/Hyprland au 1er démarrage du bureau quand Hyprland est installé
